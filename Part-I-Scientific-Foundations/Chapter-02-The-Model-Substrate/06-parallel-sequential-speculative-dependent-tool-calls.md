@@ -50,7 +50,7 @@ T_1=\sum_{v\in V}\ell_v,
 T_\infty=\max_{p\in\operatorname{Paths}(G)}\sum_{v\in p}\ell_v.
 $$
 
-With at most $P$ workers, any schedule satisfies
+Let $T_P$ be the makespan of a schedule using at most $P\ge1$ identical workers under this idealized DAG model. Any such schedule satisfies
 
 $$
 T_P\ge\max\!\left(\frac{T_1}{P},T_\infty\right).

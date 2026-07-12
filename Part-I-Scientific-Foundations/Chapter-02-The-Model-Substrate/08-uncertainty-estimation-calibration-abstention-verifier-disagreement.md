@@ -53,33 +53,35 @@ Verifier output is not automatically ground truth. A test suite can be incomplet
 
 ## 4. Formalization
 
-Let $Y\in\{0,1\}$ indicate whether an externally evaluated action or answer is correct, and let $\hat p\in[0,1]$ be a predicted probability of correctness. For empirical metrics, use a held-out set of $N$ labeled pairs $\{(y_n,\hat p_n)\}_{n=1}^{N}$ drawn under the declared evaluation protocol.
+Let $W\in\{0,1\}$ indicate whether an externally evaluated action or answer is correct, and let $\hat p\in[0,1]$ be a predicted probability of correctness. For empirical metrics, use a held-out set of $N$ labeled pairs $\{(w_n,\hat p_n)\}_{n=1}^{N}$ drawn under the declared evaluation protocol. This correctness variable is distinct from proposal sample $Y_k$ in §3.3.
 
 ### 4.1 Calibration
 
 Perfect calibration satisfies
 
 $$
-\mathbb{E}[Y\mid \hat p=p]=p
+\mathbb{E}[W\mid \hat p=p]=p
 $$
 
 for probability values with support. Two proper scoring rules are the Brier score and negative log-likelihood:
 
 $$
-\operatorname{Brier}=\frac{1}{N}\sum_{n=1}^{N}(\hat p_n-y_n)^2,
+\operatorname{Brier}=\frac{1}{N}\sum_{n=1}^{N}(\hat p_n-w_n)^2,
 $$
 
 $$
 \operatorname{NLL}
 =-\frac{1}{N}\sum_{n=1}^{N}
-\left[y_n\log \hat p_n+(1-y_n)\log(1-\hat p_n)\right].
+\left[w_n\log \hat p_n+(1-w_n)\log(1-\hat p_n)\right].
 $$
 
-Partition $[0,1]$ into $N_{\mathrm{bin}}$ declared bins and let $I_b=\{n:\hat p_n\text{ falls in bin }b\}$. For nonempty bins, define $\operatorname{acc}(I_b)=|I_b|^{-1}\sum_{n\in I_b}y_n$ and $\operatorname{conf}(I_b)=|I_b|^{-1}\sum_{n\in I_b}\hat p_n$. Expected calibration error (ECE) is useful diagnostically but depends on that binning:
+For NLL, use the extended-real conventions $0\log 0=0$ and $-\log 0=+\infty$ for a zero-probability realized class. Numerical clipping changes the reported score and must declare its clipping level.
+
+Partition $[0,1]$ into $N_{\mathrm{bin}}$ declared bins and let $I_b=\{n:\hat p_n\text{ falls in bin }b\}$ and $\mathcal B_+=\{b:|I_b|>0\}$. For $b\in\mathcal B_+$, define $\operatorname{acc}(I_b)=|I_b|^{-1}\sum_{n\in I_b}w_n$ and $\operatorname{conf}(I_b)=|I_b|^{-1}\sum_{n\in I_b}\hat p_n$. Expected calibration error (ECE) is useful diagnostically but depends on that binning:
 
 $$
 \operatorname{ECE}
-=\sum_{b=1}^{N_{\mathrm{bin}}}\frac{|I_b|}{N}
+=\sum_{b\in\mathcal B_+}\frac{|I_b|}{N}
 \left|\operatorname{acc}(I_b)-\operatorname{conf}(I_b)\right|.
 $$
 
@@ -87,7 +89,7 @@ Report the binning scheme and reliability diagram; do not use ECE alone to rank 
 
 ### 4.2 Selective risk and coverage
 
-For a decision threshold $\eta\in[0,1]$ and declared correctness loss $\ell(Y)$,
+For a decision threshold $\eta\in[0,1]$ and declared correctness loss $\ell(W)$,
 
 $$
 \operatorname{Cov}(\eta)=\Pr(\hat p\ge \eta),
@@ -95,19 +97,19 @@ $$
 
 $$
 \operatorname{SelRisk}(\eta)
-=\mathbb{E}[\ell(Y)\mid \hat p\ge\eta].
+=\mathbb{E}[\ell(W)\mid \hat p\ge\eta].
 $$
 
-$\operatorname{Cov}(\eta)$ is coverage and $\operatorname{SelRisk}(\eta)$ is selective risk; for ordinary error rate, set $\ell(Y)=1-Y$. The risk–coverage curve and its area summarize whether abstention removes genuinely difficult cases [SELECT]. Monotonic error reduction across score buckets demonstrates ranking utility; it is not, by itself, probability calibration.
+$\operatorname{Cov}(\eta)$ is coverage and $\operatorname{SelRisk}(\eta)$ is selective risk; for ordinary error rate, set $\ell(W)=1-W$. The risk–coverage curve and its area summarize whether abstention removes genuinely difficult cases [SELECT]. Monotonic error reduction across score buckets demonstrates ranking utility; it is not, by itself, probability calibration.
 
 ### 4.3 Decision-theoretic routing
 
-Let gate decision $d$ belong to $\mathcal D_{\mathrm{gate}}=\{\mathrm{proceed},\mathrm{verify},\mathrm{escalate},\mathrm{abstain}\}$. Given uncertainty-feature vector $u$, consequence class $\chi$, and a unit-consistent application loss $L_{\mathrm{gate}}(d,Y,\chi)$, the Bayes decision is:
+Let gate decision $d$ belong to $\mathcal D_{\mathrm{gate}}=\{\mathrm{proceed},\mathrm{verify},\mathrm{escalate},\mathrm{abstain}\}$. Given uncertainty-feature vector $u$, consequence class $\chi$, and a unit-consistent application loss $L_{\mathrm{gate}}(d,W,\chi)$, the Bayes decision is:
 
 $$
 d^*(u,\chi)
 =\arg\min_{d\in\mathcal D_{\mathrm{gate}}}
-\mathbb{E}[L_{\mathrm{gate}}(d,Y,\chi)\mid u,\chi],
+\mathbb{E}[L_{\mathrm{gate}}(d,W,\chi)\mid u,\chi],
 $$
 
 where the loss includes task error, verification or review cost, delay, and residual harm in application-owned units. Verification and human review are not free or perfect. High-consequence classes should therefore use different loss matrices and thresholds from reversible, low-impact tasks.
@@ -153,7 +155,7 @@ The gate belongs in the harness because it combines signals, policy and conseque
 
 ## 8. Limitations
 
-- Agent correctness is often structured and delayed; a binary $Y$ may compress partial success, reversible errors and critical violations. Use task-specific loss functions where consequence matters.
+- Agent correctness is often structured and delayed; a binary $W$ may compress partial success, reversible errors and critical violations. Use task-specific loss functions where consequence matters.
 - Token probabilities describe sequence generation, not directly the probability that an environment action is correct.
 - Calibration is distribution-specific. No finite evaluation proves calibration under arbitrary deployment shift.
 - Self-consistency and verifier ensembles can be expensive and correlated. Diversity must be measured, not inferred from component names.

@@ -52,7 +52,7 @@ Readers are assumed to have:
 | **Workflow** | System where LLMs and tools are orchestrated through predefined code paths | [BEA] |
 | **Agent (Anthropic's behavioral sense)** | System where the LLM dynamically directs its own processes and tool usage, maintaining control over how it accomplishes tasks | [BEA] |
 | **Environment** | The external system $\mathcal E$: workspace, files, services, users, and other processes; the evaluator is external to the acting policy | [HB §3] |
-| **Latent trajectory** | $\tau^\star=(s_0,x_0,\mathbf a_0,s_1,\ldots,x_{T_{\mathrm{end}}},\mathbf a_{T_{\mathrm{end}}},s_{T_{\mathrm{end}}+1})$: the generative state–observation–action sequence, including environment states that may not be observable | [MEM §2.1; POMDP] |
+| **Latent trajectory** | $\tau^\star=(s_0,\mathbf x_0,\mathbf a_0,s_1,\ldots,\mathbf x_{T_{\mathrm{end}}},\mathbf a_{T_{\mathrm{end}}},s_{T_{\mathrm{end}}+1})$: the generative state–observation–action sequence, including environment states that may not be observable | [MEM §2.1; POMDP] |
 | **Observable trace** | $\hat\tau$: the persisted evidence available to engineering and evaluation — requests, responses, tool calls/results, workspace deltas, timestamps, usage, and validator outputs | [HB §3.3] |
 | **Turn** | One round trip: model output including tool calls → tool execution → results fed back | [CAL] |
 | **Run** | $R=\operatorname{Run}(M,H,\mathcal E,\mathcal Q)$: one complete attempt on task specification $\mathcal Q$ | [HB §3.3] |
@@ -79,7 +79,7 @@ This boundary follows Harness-Bench's evaluation setting (task, initial sandbox 
 After this chapter you should be able to:
 
 1. Classify any proposed system as automation / workflow / assistant / agent using the decision tests in Topic 1, and defend the classification.
-2. Write down the formal interaction model $(\rho_0,\Psi,\Omega,\pi,\kappa,U,\mathbf C,\tau^\star,\hat\tau)$ for a concrete system and identify which component each engineering artifact implements (Topic 2).
+2. Write down the formal interaction model $(\rho_0,\Psi,\Omega,C_H,\pi_M,\pi_{\mathrm{exec}},\kappa,U,\mathbf C,\tau^\star,\hat\tau)$ for a concrete system and identify which component each engineering artifact implements (Topic 2).
 3. Profile task horizon, effective branching, state observability, outcome verifiability, reversibility/recoverability, and failure cost; state which reliability hypotheses require measurement (Topic 6).
 4. Compute an independence baseline from matched per-step measurements, distinguish it from a bound, and quantify conditional composition effects without comparing unmatched aggregate task mixtures (Topic 8).
 5. Justify — with measurements, not taste — when a deterministic workflow is preferred to model-directed control (Topics 9–10).

@@ -29,13 +29,13 @@ Given transition kernel $\Psi$ and observation kernel $\Omega$, the Bayesian fil
 $$
 b_{t+1}(s')
 \mathrel{=}
-\eta\,
+\frac{1}{\mathsf{Norm}_{t+1}}
 \Omega(x_{t+1}\mid s',a_t,\mathcal Q)
 \sum_{s\in\mathcal S}
 \Psi(s'\mid s,a_t,\mathcal Q)b_t(s),
 $$
 
-where $\eta$ normalizes the posterior to sum or integrate to one. [POMDP]
+where $\mathsf{Norm}_{t+1}$ is the sum or integral of the unnormalized numerator over $s'$, so the posterior has unit mass. [POMDP]
 
 This equation makes three assumptions explicit: a specified latent-state space, calibrated transition and observation models, and exact conditioning on the required history. Most deployed LLM agents have none of these objects numerically, so the equation is a reference semantics rather than an implementation description.
 
@@ -150,7 +150,7 @@ Belief quality is only partially observable, so measurements must specify the pr
 
 ## 10. Connections
 
-- Topic 2 supplies $(\rho_0,\Psi,\Omega,C_H,\pi)$; this topic explains state estimation between observation and action.
+- Topic 2 supplies $(\rho_0,\Psi,\Omega,C_H,\pi_M,\pi_{\mathrm{exec}})$; this topic explains state estimation between observation and proposal/action selection.
 - Topic 6 separates state observability from outcome verifiability; Topic 8 models detection and recovery.
 - Chapter 6 engineers $C_H$; Chapter 7 owns $\mathcal M_t$ and $(F_M,E_M,R_M)$; Chapter 10 handles long-horizon checkpointing; Chapter 12 handles adversarial observation channels.
 

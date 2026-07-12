@@ -14,7 +14,7 @@ The loop is the agent's heartbeat, and its phases answer seven questions in orde
 
 **Infer.** One model call; proposals out — "text, tool call requests, or both" [CAL]. The `after_model` hook may modify "response content, tool calls" [HX Table 1] — the control plane's one chance to transform proposals before they become candidate actions.
 
-**Act.** Admission plus execution: permission evaluation, hook interception ("a `PreToolUse` hook that rejects a tool call prevents it from executing" [CAL]; `before_tool` may modify "tool input, approval flag" [HX Table 1]), then execution under the concurrency discipline (read-only parallel, mutations serialized [CAL]) inside the sandbox tier the policy assigns [CAH §3.4.3; CDX].
+**Act.** Parse, admission, and execution are distinct. Permission evaluation and hook interception occur before dispatch: current Claude Agent SDK documentation states that a rejecting `PreToolUse` hook prevents execution [CAL]. That SDK currently runs documented read-only tools concurrently and state-modifying tools sequentially by default; this is a provider implementation rule, not a proof that arbitrary read-only operations are conflict-free [CAL]. Sandbox and approval semantics remain runtime-specific [CAH §3.4.3; CDX].
 
 **Observe.** Results return — but not raw: "since raw logs may be too long or noisy for the active context, the harness should parse, summarize, and offload verification traces while preserving full-fidelity artifacts for audit and replay" [CAH §3.3.4]. Observe is a *routing and compression* decision (what the model sees) layered on a *retention* decision (what the record keeps); `after_tool` owns the first [HX Table 1], the tracer slot the second.
 
@@ -32,61 +32,74 @@ The loop is the agent's heartbeat, and its phases answer seven questions in orde
 | Infer | `AssistantMessage` (text + tool-call blocks) | Agent logic runs, constructs Event | (model proposes within plan) |
 | Act | Permissions → hooks → execution (parallel/serial by mutation) | Event yielded; execution pauses | Sandboxed, permissioned execution by tier |
 | Observe | `UserMessage` with tool results feeds back | Runner processes event, forwards upstream | Sensors turn trajectory into "inspectable signals" |
-| Verify | **Optional** — hooks/`Stop` hook available, not mandatory | **Not native** — application-level | **The defining phase**: deterministic sensors, human-review gates |
+| Verify | Base loop does not require independent task validation; `Stop` and other hooks can add it | Runner does not impose a task-specific verifier; application logic, callbacks, or plugins can add one | Verification is explicit: sensors and human-review gates |
 | Update state | History accumulates; compaction summarizes | **Commit-before-continue**: services persist deltas, then resume | Traces + artifacts preserved for audit/replay |
 | Terminate | No-tool-call response, or budget subtypes | Invocation completes; final event | **Verification-governed** stop conditions |
 
-**[derived — mapping ours; each cell sourced]** The table's diagonal is the finding: each runtime makes *one* canonical phase first-class that the others leave implicit — ADK the commit discipline, the SDK the budget-bounded model-decided stop with interception points, PEV the verification gate. No shipped loop makes all seven mandatory. The builder's job is to know which phases their substrate leaves optional and to supply them; the failure data says verify and terminate-by-verification are the ones most often missing and most expensive when missing [FSC §6.4.1.4; CAH §3.5's failure clusters include "premature termination"].
+**[derived—mapping ours; each cell sourced]** The table compares documented defaults and extension points, not complete products. ADK makes yielded-event processing and state commitment explicit; the Claude Agent SDK documents a tool loop, typed result stream, limits, permissions, and hooks; PEV makes verification a design-stage obligation. None of these observations establishes a universal reliability ordering. Builders must identify which phases their chosen version enforces and which remain application responsibilities.
 
 ## 5. Formalization: the loop as typed harness stages
 
-The book's notation contract (Chapter 1, Topic 12 §3.3) defines the typed stages this loop instantiates; one decision event $t$ executes them in order **[synthesis — stage types from the notation contract; phase semantics sourced per §3]**:
+For one realized decision event $t$, use the Chapter 1 contract **[synthesis—stage types from Chapter 1; phase semantics sourced in §3]**:
 
 $$
-C_t=\operatorname{Assemble}_{H_c}\!\left(Q_j,\,X_t,\,\mathcal H_t,\,R_t,\,\mathcal U_c,\,B_c,\,P_c\right)
-\qquad\text{(gather)}
+c_t
+=\operatorname{Assemble}_{H_c}
+\!\left(\mathcal Q,x_t,h_t,r_t,\mathcal U_c,b_t^{\mathrm{rem}},P_c\right),
+\qquad
+y_t\sim\pi_M(\cdot\mid c_t,\nu_c).
 $$
 
-$$
-Y_t\sim\pi_{M_c}\!\left(\cdot\mid C_t,\,\nu_c\right)
-\qquad\text{(infer: a sampled proposal, not yet an action)}
-$$
+Here $\mathcal Q$ is the task specification, $x_t$ the current raw observation, $h_t$ visible history, $r_t$ retrieved content, $\mathcal U_c$ tool contracts, $b_t^{\mathrm{rem}}$ remaining budget, and $P_c$ policy. The model emits proposal $y_t$; it does not emit an executed action.
 
 $$
-\Xi_t=\operatorname{Parse}_{H_c}(Y_t),\qquad
-\widetilde A_t=\operatorname{Admit}_{H_c}\!\left(\Xi_t,\,P_c,\,B_c\right),\qquad
-A_t=\operatorname{ScheduleExec}_{H_c}\!\left(\widetilde A_t,\,\mathcal U_c\right)
-\qquad\text{(act)}
+\xi_t=\operatorname{Parse}_{H_c}(y_t),\qquad
+\widetilde a_t=\operatorname{Admit}_{H_c}
+\!\left(\xi_t,P_c,b_t^{\mathrm{rem}}\right),\qquad
+a_t=\operatorname{Dispatch}_{H_c}(\widetilde a_t,\mathcal U_c).
 $$
 
-$$
-X_{t+1}\sim\Omega\!\left(\cdot\mid S_{t+1},A_t,Q_j\right),\qquad
-\text{routed as } \operatorname{route}\!\left(\operatorname{compress}(X_{t+1})\right)
-\qquad\text{(observe)}
-$$
+$\xi_t$ is the typed candidate object, $\widetilde a_t$ an admitted action, and $a_t$ the action actually dispatched. Any stage may instead return a typed parse failure, rejection, retry directive, interruption, or distinguished no-op. Marginalizing proposal sampling and harness decisions yields the analytical executable policy
 
 $$
-v_t=\operatorname{Sensors}\!\left(\hat\tau_{0:t},\,\text{workspace}\right)\in\{\text{pass},\text{fail}(\text{evidence})\}
-\qquad\text{(verify)}
+a_t\sim\pi_{\mathrm{exec}}
+\!\left(\cdot\mid c_t,\hat\tau_{0:t-1},\mathcal Q;c\right),
 $$
 
-$$
-\operatorname{commit}\!\left(\Delta\text{state},\,\Delta\text{artifacts}\right);\quad
-B\leftarrow B-\operatorname{cost}(t)
-\qquad\text{(update state)}
-$$
+where $c$ is the full versioned configuration. $\pi_{\mathrm{exec}}$ is induced behavior, not a fourth software component.
+
+After dispatch, the latent environment and observation channel evolve:
 
 $$
-\kappa_t=\mathsf K\!\left(\hat\tau_{0:t},\,B,\,v_t\right)\in
-\{\mathrm{continue},\,\mathrm{success},\,\mathrm{model\_stop},\,\mathrm{budget},\,\mathrm{timeout},\,\mathrm{execution\_error},\,\mathrm{policy\_block}\}
-\qquad\text{(terminate)}
+s_{t+1}\sim\Psi(\cdot\mid s_t,a_t,\mathcal Q),\qquad
+x_{t+1}\sim\Omega(\cdot\mid s_{t+1},a_t,\mathcal Q).
 $$
 
-Three properties of this typing are load-bearing:
+The state $s_{t+1}$ belongs to latent trajectory $\tau^\star$ and is not assumed logged. Verification consumes observable evidence:
 
-1. **Proposal ≠ admitted ≠ executed.** $Y_t$, $\Xi_t$, $\widetilde A_t$, and $A_t$ are distinct objects with distinct failure outcomes (parse failure, rejection, timeout, no-op), all recorded in $\hat\tau$ — the harness acts both before and after the model and is a stateful transducer, not a single post-model function (Ch. 1, Topic 12 §3.3).
-2. **$\mathrm{model\_stop}$ and $\mathrm{success}$ are distinct terminal causes.** A no-tool-call emission is a model *proposal pattern*; whether it terminates the run, and whether the terminal state counts as success, are harness and validator decisions [CAL; CAH §3.4.4]. Model satisfaction appears in no success-classifying disjunct — this is Chapter 2 Topic 14's premature-completion evidence [FSC §6.4.1.4] turned into a type signature.
-3. **$v_t$ is a control input, not a log line.** The verify verdict feeds $\mathsf K$ and the next $\operatorname{Assemble}$ (repair context), which is exactly [CAH §3.4.4]'s requirement that repair, reflection, and termination be consequences of Verify.
+$$
+v_{t+1}
+=\operatorname{Verify}_{J_v}
+\!\left(\hat\tau_{0:t+1},\mathcal W_{t+1}\right)
+\in\{\mathrm{pass},\mathrm{fail},\mathrm{unknown}\},
+$$
+
+where $J_v$ versions the runtime verifier and $\mathcal W_{t+1}$ denotes inspectable workspace/artifact evidence. The runtime appends proposal, admission, execution, observation, usage, and verifier events to $\hat\tau$; it updates remaining resources using checked subtraction rather than unchecked arithmetic. Termination is then
+
+$$
+\kappa_t
+=\mathsf K
+\!\left(\hat\tau_{0:t+1},b_{t+1}^{\mathrm{rem}},v_{t+1}\right)
+\in
+\{\mathrm{continue},\mathrm{success},\mathrm{model\_stop},\mathrm{budget},
+\mathrm{timeout},\mathrm{execution\_error},\mathrm{policy\_block}\}.
+$$
+
+Three properties are load-bearing:
+
+1. **Proposal, admission, and execution are different types.** $y_t\neq\widetilde a_t\neq a_t$ in role, even when their serialized payloads happen to match.
+2. **Runtime completion is not verified task success.** A no-tool-call proposal or provider runtime subtype may cause $\mathrm{model\_stop}$; $\mathrm{success}$ requires the declared external criterion. Current Claude Agent SDK `ResultMessage(subtype="success")` means its loop completed without an SDK limit/error, not that an application-specific verifier proved the task [CAL].
+3. **Trace is not trajectory.** $\hat\tau$ contains persisted evidence; $\tau^\star$ includes latent $s_t$ and uninstrumented effects. Replay and evaluation must state what is absent.
 
 ## 6. Failure modes, phase-indexed
 
@@ -109,7 +122,7 @@ Three properties of this typing are load-bearing:
 1. **Audit your loop against the seven phases**; for each, write down what implements it and what happens when it fails. Blank cells — usually verify and terminate-by-verification — are the work plan.
 2. **Make verify a phase, not a hope:** wire sensors into the loop (post-mutation checks, milestone validations) rather than trusting the model to call them; the substrate supports it (hooks [CAL]; processors [HX]) — the discipline is yours to add.
 3. **Adopt commit-before-continue for state you cannot afford to lose** [ADK] — or document precisely which state is fire-and-forget and why.
-4. **Log $\kappa_t$ per run and report its distribution** — the split among $\mathrm{success}$ (validator-confirmed), $\mathrm{model\_stop}$ (unverified model proposal accepted), and the budget/timeout/error subtypes is the single most informative loop-health metric this chapter offers; a high $\mathrm{model\_stop}$ share means the loop is trusting the least trustworthy stop signal (§5.2).
+4. **Log $\kappa_t$ per run and report its distribution**—separate validator-confirmed $\mathrm{success}$, unverified $\mathrm{model\_stop}$, and budget/timeout/error subtypes. Interpret the distribution with task mix and censoring; no single subtype ratio is universally diagnostic.
 5. **Engineer the observe phase's two decisions separately:** what the model sees (compressed, routed) and what the record keeps (full fidelity) [CAH §3.3.4] — conflating them either drowns the model or blinds the audit.
 
 ## 9. Connections
@@ -123,5 +136,5 @@ Three properties of this typing are load-bearing:
 [ADK] Google ADK runtime event-loop documentation — https://adk.dev/runtime/event-loop/
 [CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.3.4, §3.4.1–3.4.4, §3.5
 [HX] HarnessX, arXiv:2606.14249 (`Knowledge_source/2606.14249v2.pdf`) §3.1–3.2, Table 1
-[CDX] OpenAI Codex documentation, sandboxing and approvals — https://learn.chatgpt.com/docs/sandboxing
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §2.3.3, §6.4.1.4
+[CDX] OpenAI Codex documentation, agent approvals and security — https://learn.chatgpt.com/docs/agent-approvals-security
+[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf`) §2.3.3, §6.4.1.4

@@ -39,7 +39,7 @@ Chapter 1 in full — especially the formal model (Topic 1.2), the typed applica
 | **`tool_choice` / `parallel_tool_calls`** | Developer controls over tool-emission eligibility and whether a model response may contain multiple function calls; they do not execute developer functions or define the application's scheduler | [OFC] |
 | **Planning locus** | Where plan control is realized: linear decomposition, structure-grounded, search-based, or orchestration-based | [CAH §3.1] |
 | **C-A-F loop** | Context → Action → Feedback → Context: verified outcome of each decision enters the next decision's context | [AAR §3.2] |
-| **Cumulative regret** | $\operatorname{CumReg}_N(\pi)=\sum_{i=1}^{N}(r_i^\star-r_i(M_i^{\mathrm{sel}}))=N\bigl(V_N^\star-\widehat V_N(\pi)\bigr)$, where $r_i^\star=\max_{m\in\mathcal M_i}r_i(m)$, $V_N^\star=N^{-1}\sum_i r_i^\star$, and $\widehat V_N(\pi)=N^{-1}\sum_i r_i(M_i^{\mathrm{sel}})$; empirical regret against a retrospectively observed per-task oracle | [AAR §3.2] |
+| **Cumulative regret** | $\operatorname{CumReg}_N(\mu_R)=\sum_{i=1}^{N}(r_i^\star-r_i(M_i^{\mathrm{sel}}))=N\bigl(V_N^\star-\widehat V_N(\mu_R)\bigr)$, where $\mu_R$ is the router, $\mathcal M_i$ the configurations feasible for instance $i$, $M_i^{\mathrm{sel}}\sim\mu_R$, $r_i^\star=\max_{m\in\mathcal M_i}r_i(m)$, $V_N^\star=N^{-1}\sum_i r_i^\star$, and $\widehat V_N(\mu_R)=N^{-1}\sum_i r_i(M_i^{\mathrm{sel}})$; empirical regret against a retrospectively observed per-task oracle | [AAR §3.2] |
 | **Grader awareness** | Model's (often unverbalized) representation that its output will be graded; nominal vs. exploitative | [FSC §6.4.2] |
 
 ## 5. System boundary

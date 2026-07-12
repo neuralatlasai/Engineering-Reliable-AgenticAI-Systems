@@ -51,15 +51,17 @@ Track unsupported-claim rate, contradiction rate and evidence coverage separatel
 
 Premature completion occurs when a run reaches a model- or harness-declared terminal state while the externally defined success predicate remains false. It is a disagreement between termination and task state, not merely “unused budget.”
 
-Let $T_{\mathrm{stop}}$ be the stopping time, $\hat\tau_{0:t}$ the observable trace prefix, $\mathcal W_t$ the externally inspectable artifact/workspace evidence, and $G_J(\hat\tau_{0:t},\mathcal W_t)\in\{0,1,\mathrm{unknown}\}$ a versioned external evaluator's completion decision. The observed premature-completion indicator is
+Let $T_{\mathrm{stop}}$ be the stopping time, $\hat\tau_{0:t}$ the observable trace prefix, $\mathcal W_t$ the externally inspectable artifact/workspace evidence, and $G_J(\hat\tau_{0:t},\mathcal W_t)\in\{0,1,\mathrm{unknown}\}$ a versioned external evaluator's completion decision. Define a known-outcome indicator and a premature-completion indicator:
 
 $$
-\mathbf{1}\!\left\{
-G_J(\hat\tau_{0:T_{\mathrm{stop}}},\mathcal W_{T_{\mathrm{stop}}})=0
-\right\}.
+O_{\mathrm{known}}
+=\mathbf{1}\{G_J\in\{0,1\}\},
+\qquad
+F_{\mathrm{prem}}
+=\mathbf{1}\{G_J=0\}.
 $$
 
-An oracle benchmark may replace $G_J$ with a ground-truth predicate over latent state, but a deployed system must not call a predicate of unobserved $s_t$ “verified.” Unknown evaluator outcomes remain a separate measurement state. Large unspent budget is a diagnostic feature only when the task is incomplete. Efficient successful runs should not be penalized for stopping early.
+Both indicators are evaluated at $(\hat\tau_{0:T_{\mathrm{stop}}},\mathcal W_{T_{\mathrm{stop}}})$. Over runs indexed by $r$, report $\widehat\theta_{\mathrm{prem}}=\sum_r F_{\mathrm{prem},r}/\sum_r O_{\mathrm{known},r}$ when the denominator is nonzero, alongside the unknown-outcome rate. Thus unknown cases are excluded rather than counted as successful negatives. An oracle benchmark may replace $G_J$ with a ground-truth predicate over latent state, but a deployed system must not call a predicate of unobserved $s_t$ “verified.” Large unspent budget is a diagnostic feature only when the task is incomplete. Efficient successful runs should not be penalized for stopping early.
 
 ### 4.2 Evidence and interpretation
 

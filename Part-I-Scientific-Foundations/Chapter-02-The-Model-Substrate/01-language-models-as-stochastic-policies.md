@@ -28,7 +28,7 @@ $$
 At position $j$, the model produces logits $z_j\in\mathbb R^{|\mathcal V|}$. The endpoint applies a decoding operator $D_\phi$, parameterized by configuration $\phi$ (temperature, nucleus or top-$k$ filtering, stop rules, and any grammar/schema mask), to obtain a normalized distribution over the currently admissible token set $\mathcal V_j^{\mathrm{adm}}$:
 
 $$
-q_{\theta,\phi}(v\mid w,u_{<j})
+q_{\theta,\phi}(v\mid w_{1:L},u_{<j})
 \mathrel{=}
 \begin{cases}
 \dfrac{\exp(D_\phi(z_j)_v)}
@@ -37,7 +37,7 @@ q_{\theta,\phi}(v\mid w,u_{<j})
 0, & v\notin\mathcal V_j^{\mathrm{adm}},
 \end{cases}
 \qquad
-u_j\sim q_{\theta,\phi}(\cdot\mid w,u_{<j}).
+u_j\sim q_{\theta,\phi}(\cdot\mid w_{1:L},u_{<j}).
 $$
 
 Here $\phi$ and $v_M$ are part of the effective policy contract. Greedy decoding replaces sampling with an $\arg\max$, but it still does not create a cross-version reproducibility guarantee: provider-side model revisions, nondeterministic serving kernels, hidden safety processing, and context assembly can change the effective computation [NUC]. A parser $g$ maps the completed token sequence to a candidate language response, tool-call set, plan, environment-control proposal, or communication proposal:

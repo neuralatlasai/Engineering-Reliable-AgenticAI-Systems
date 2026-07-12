@@ -25,7 +25,7 @@
 11. Agentic-system taxonomy for conversational, transactional, coding, research, browser, and embodied agents
 12. Scientific notation and measurement framework used throughout the book
 
-The chapter must begin with empirical limitations: DeepMind reported a sharp degradation between base and compositionally combined web tasks, demonstrating that local task success cannot be extrapolated to long workflows. [DeepMind CompWoB research](https://deepmind.google/research/publications/46840/), [Anthropic’s agent/workflow distinction](https://www.anthropic.com/engineering/building-effective-agents)
+The chapter must begin with empirical limitations: DeepMind reported a sharp degradation between base and compositionally combined web tasks, showing that local task success cannot be transported to longer workflows without explicit transport assumptions and matched measurement. [DeepMind CompWoB research](https://deepmind.google/research/publications/46840/), [Anthropic’s agent/workflow distinction](https://www.anthropic.com/engineering/building-effective-agents)
 
 ---
 

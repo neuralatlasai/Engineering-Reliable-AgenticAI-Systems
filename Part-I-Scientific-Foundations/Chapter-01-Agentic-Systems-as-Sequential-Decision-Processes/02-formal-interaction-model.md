@@ -66,7 +66,9 @@ Writing a distribution rather than $y_t^i=\pi_{M_i}(\cdot)$ preserves sampling, 
 
 These action types may be proposed by an autoregressive model, selected by deterministic application logic, or jointly mediated by both. A harness admits a proposal as $\widetilde{\mathbf a}_t$ and the dispatcher records the executed joint action $\mathbf a_t$; rejection, parse failure, and no-op remain explicit. The three objects must not be conflated.
 
-The model's internal deliberation remains abstracted inside $\pi_i$ [MEM §2.1]. Reliability contracts belong on observable inputs, proposed actions, admitted actions, effects, and externally checked outcomes; they need not assume that hidden reasoning is faithful or fully inspectable.
+Let $\mathbf c_t=(c_t^1,\ldots,c_t^N)$ collect the agents' policy-visible contexts. The complete application–harness–model system induces an **executable policy** $\pi_{\mathrm{exec}}(\mathbf a_t\mid\mathbf c_t,\hat\tau_{0:t-1},\mathcal Q)$ over joint actions actually dispatched. This is an analytical marginal over proposal sampling, admission, routing, and scheduling—not a fourth implementation layer and not another name for $\pi_M$.
+
+The model's internal deliberation remains abstracted inside $\pi_{M_i}$ [MEM §2.1]. Reliability contracts belong on observable inputs, proposed actions, admitted actions, effects, and externally checked outcomes; they need not assume that hidden reasoning is faithful or fully inspectable.
 
 ### 3.4 Termination
 
@@ -118,12 +120,14 @@ Three signals must not be conflated:
 Define task utility $U_{\mathcal Q}(\tau^\star)$ and $K_C$ safety/resource cost functionals $C_k(\tau^\star)$ with limits $b_k$:
 
 $$
-\max_\pi\ \mathbb E_\pi[U_{\mathcal Q}(\tau^\star)]
+\max_{\pi_{\mathrm{exec}}\in\mathcal P_{\mathrm{allowed}}}
+\ \mathbb E_{\pi_{\mathrm{exec}}}[U_{\mathcal Q}(\tau^\star)]
 \qquad\text{subject to}\qquad
-\mathbb E_\pi[C_k(\tau^\star)]\le b_k,\quad k=1,\ldots,K_C.
+\mathbb E_{\pi_{\mathrm{exec}}}[C_k(\tau^\star)]\le b_k,
+\quad k=1,\ldots,K_C.
 $$
 
-This is the constrained decision problem. In deployment, exact utility and costs may be unknown; the evaluator $J$ estimates them from observable evidence:
+Here $\mathcal P_{\mathrm{allowed}}$ is the set of executable policies realizable under the declared permissions, budgets, and control mechanisms. This is the constrained decision problem. In deployment, exact utility and costs may be unknown; the evaluator $J$ estimates them from observable evidence:
 
 $$
 R=\operatorname{Run}(M,H,\mathcal E,\mathcal Q),
@@ -161,7 +165,7 @@ The multiplicative form requires completion, no scored security violation, and p
 - **I2 — Observation may be partial.** In a fully observable special case, $x_t$ can identify $s_t$. In the agent settings of interest, tool and interface boundaries usually make $\Omega$ many-to-one, delayed, truncated, or noisy.
 - **I3 — Policy context is not raw observation.** $\Omega$ and $C_H$ have different owners and failure modes. A missing file can be an environment-interface omission; a truncated tool result is context construction.
 - **I4 — Termination cause is part of the result.** Model stop, verified success, budget exhaustion, safety stop, and execution error are not interchangeable outcomes.
-- **I5 — Evaluation is external.** A self-assessment emitted by $\pi$ is an action, not independent evidence. The Fable/Mythos system card documents false completion and verification claims [FSC §2.3.3].
+- **I5 — Evaluation is external.** A self-assessment emitted by $\pi_M$ is a proposal, not independent evidence. The Fable/Mythos system card documents false completion and verification claims [FSC §2.3.3].
 - **I6 — Trace is not trajectory.** $\hat\tau$ is auditable evidence; $\tau^\star$ contains latent variables and cannot generally be reconstructed exactly.
 
 ## 5. Mapping the formalism onto an executable runtime
@@ -217,14 +221,14 @@ Minimum instrumentation implied by the observable variables:
 ## 9. Limitations
 
 - A POMDP is an abstraction, not a claim that production teams know $\rho_0$, $\Psi$, or $\Omega$ numerically. Its value is boundary discipline and explicit uncertainty.
-- Internal deliberation remains hidden inside $\pi$ [MEM §2.1]. Trace-level analysis cannot prove why a sampled action occurred.
+- Internal deliberation remains hidden inside $\pi_M$ [MEM §2.1]. Trace-level analysis cannot prove why a sampled proposal occurred.
 - Stationarity requires state augmentation. Live web state, concurrent edits, clock time, and provider changes violate a naive stationary model unless represented as state or as a versioned change in $\mathcal E$.
 - Treating $\mathcal Q$ as fixed excludes mid-run re-instruction. An interactive task can instead model $\mathcal Q_t$ as part of state and record principal-authorized updates.
 - The constrained objective states what should be optimized; the external evaluator is only an estimator and can be biased, noisy, or incomplete.
 
 ## 10. Production implications
 
-1. **Design by typed boundary.** Assign each component to one or more of $\rho_0$, $\Psi$ interface, $\Omega$, $C_H$, $\pi$, scheduler $\sigma$, termination rule $\mathsf K$, utility/constraints, or evaluator $J$.
+1. **Design by typed boundary.** Assign each component to one or more of $\rho_0$, $\Psi$ interface, $\Omega$, $C_H$, model proposal policy $\pi_M$, induced executable policy $\pi_{\mathrm{exec}}$, scheduler $\sigma$, termination rule $\mathsf K$, utility/constraints, or evaluator $J$.
 2. **Validate both proposal and admission.** Schema-check model output, then independently enforce permissions, preconditions, idempotency, and action-specific safety policy.
 3. **Do not let policy output serve as its only evidence.** Use external validators where the task admits them and label judgment-only outcomes accordingly.
 4. **Persist observable evidence and its limits.** Record $\hat\tau$ completely enough for replay and audit, while documenting latent state that remains unobserved.

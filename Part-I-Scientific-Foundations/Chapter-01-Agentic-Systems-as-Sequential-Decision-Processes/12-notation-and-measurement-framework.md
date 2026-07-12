@@ -64,6 +64,8 @@ $$
 
 Define $A_{-1}=A_{\varnothing}$ as the initialization no-op sentinel. A domain with different initialization semantics may instead declare a separate kernel $\Omega_{i,0}(\cdot\mid S_0,Q_j)$.
 
+Let $\mathbf X_t=(X_t^1,\ldots,X_t^{N_A})$ denote the joint raw-observation object at event $t$; components unavailable to a given agent remain absent from that agent's own context.
+
 The environment transitions after an executed joint action $A_t$:
 
 $$
@@ -87,10 +89,10 @@ $$
 \mathrel{=}
 \left(
 S_0,
-X_0,
+\mathbf X_0,
 A_0,
 \ldots,
-X_K,
+\mathbf X_K,
 A_K,
 S_{K+1}
 \right).
@@ -169,7 +171,7 @@ $$
 
 $Y_t^i$ may contain text, candidate tool calls, planning content, or communication. It is not yet an environment action.
 
-Uppercase Latin symbols denote random variables or typed process objects in this contract. Lowercase $s_t$, $x_t$, $c_t$, $y_t$, and $a_t$ denote realized values in worked examples and topic prose. Greek symbols retain their declared functional roles—for example, transition kernel $\Psi$, observation kernel $\Omega$, model policy $\pi$, and terminal-control status $\kappa_t$—rather than following the Latin case convention.
+Uppercase Latin symbols denote random variables or typed process objects in this contract. Lowercase $s_t$, $x_t$, $c_t$, $y_t$, and $a_t$ denote realized values in worked examples and topic prose. Greek symbols retain their declared functional roles—for example, transition kernel $\Psi$, observation kernel $\Omega$, model proposal policy $\pi_M$, induced executable policy $\pi_{\mathrm{exec}}$, and terminal-control status $\kappa_t$—rather than following the Latin case convention.
 
 The harness parses, validates, and adjudicates proposals:
 
@@ -245,7 +247,7 @@ $$
 \mathrel{=}
 \left(
 Q_j,
-X_{0:K},
+\mathbf X_{0:K},
 Y_{0:K},
 \Xi_{0:K},
 \widetilde{A}_{0:K},

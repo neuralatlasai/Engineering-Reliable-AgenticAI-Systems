@@ -56,7 +56,7 @@ $$
 M_{\mathrm{peak}}(b_{1:n})\le B_{\mathrm{mem}}.
 $$
 
-Here $\tau^\star$ is the latent run trajectory, $\hat\tau$ its observable trace, $C_u$ monetary cost, $Q_u$ token consumption, $L$ measured end-to-end latency, $q$ a selected quantile such as p95 or p99, and $M_{\mathrm{peak}}$ the maximum aggregate memory simultaneously resident across all live branches. The caps $B_{\mathrm{USD}}$, $B_{\mathrm{tok}}$, $B_{\mathrm{lat}}$, and $B_{\mathrm{mem}}$ respectively bound money, tokens, tail latency, and peak memory. These quantities cannot be collapsed into one scalar budget without an explicit, unit-bearing utility conversion. Parallel search also makes latency a critical-path quantity rather than a sum of call latencies. In an adaptive run, let $h_u$ be the observable history before step $u$ and allocate through a policy
+Here $\tau^\star$ is the latent run trajectory, $\hat\tau$ its observable trace, $C_u$ monetary cost, $Q_u$ token consumption, $L$ measured end-to-end latency, $q$ a selected quantile such as p95 or p99, and $M_{\mathrm{peak}}$ the maximum aggregate memory simultaneously resident across all live branches. Define total cost $\mathsf{Cost}_{\mathrm{tot}}=\sum_u C_u(b_u)$ and total tokens $Q_{\mathrm{tot}}=\sum_u Q_u(b_u)$. The caps $B_{\mathrm{USD}}$, $B_{\mathrm{tok}}$, $B_{\mathrm{lat}}$, and $B_{\mathrm{mem}}$ respectively bound money, tokens, tail latency, and peak memory. These quantities cannot be collapsed into one scalar budget without an explicit, unit-bearing utility conversion. Parallel search also makes latency a critical-path quantity rather than a sum of call latencies. In an adaptive run, let $h_u$ be the observable history before step $u$ and allocate through a policy
 
 $$
 b_u\sim\mu(\cdot\mid h_u,\mathbf B_u^{\mathrm{rem}}),
@@ -66,7 +66,7 @@ where $\mathbf B_u^{\mathrm{rem}}$ is the vector of remaining resource budgets; 
 
 Three evidence constraints govern the optimization:
 
-1. **Compute elasticity is empirical.** Task shape supplies a prior about where extra deliberation may help, but only a workload sweep estimates the marginal gain $\Delta\mathbb E[U]/\Delta C$, $\Delta\mathbb E[U]/\Delta Q$, or the movement of the latency–quality Pareto frontier [TTC].
+1. **Compute elasticity is empirical.** Task shape supplies a prior about where extra deliberation may help, but only a workload sweep estimates the marginal gain $\Delta\mathbb E[U]/\Delta\mathsf{Cost}_{\mathrm{tot}}$, $\Delta\mathbb E[U]/\Delta Q_{\mathrm{tot}}$, or the movement of the latency–quality Pareto frontier [TTC].
 2. **Compute does not replace missing information.** In the AAR routing ablation, adding measured performance statistics moved 41.41 to 47.74 AvgPerf%, whereas adding task-dimension descriptions yielded 41.18 [AAR §3.1]. This supports a benchmark-specific diagnosis that evidence, rather than more unguided deliberation, was the principal missing input.
 3. **A configured ceiling does not impose a useful floor.** The system-card stopping episode used 3,637 tokens while 2.43 million remained and showed budget-exhaustion-like activation decodings [FSC §6.4.1.4]. The episode demonstrates that an outer budget alone does not guarantee continued work; it does not establish a universal internal allocation mechanism.
 

@@ -2,87 +2,198 @@
 
 ## 1. Problem and objective
 
-Termination is the control plane's hardest decision because it is a judgment ("is this done?") that must be rendered by machinery that cannot judge, about a claim ("I'm done") from a component that cannot be trusted to make it. Chapter 2 documented the distrust empirically: premature stops driven by unverbalized internal states, including a spurious belief of budget exhaustion with $2.43\times10^6$ tokens actually remaining [FSC §6.4.1.4]. This topic builds the full termination architecture: the typed predicate $\kappa_t$, the four budget families and their enforcement semantics, the verification-governed stop conditions the sources specify, and the measurement treatment of budget-terminated runs — which is where most reporting goes quietly wrong.
+An agent run needs an explicit rule for deciding whether to continue, declare a validated result, stop without validation, or halt because execution can no longer proceed safely. A model-generated completion signal is evidence for that decision, not the decision itself. The harness owns the decision because it can combine the observable trace $\hat\tau_{0:t}$, validator evidence, policy state, execution errors, external cancellation, and resource accounts.
+
+This topic specifies a typed termination function, deterministic precedence for simultaneous terminal conditions, budget enforcement with explicit overshoot assumptions, and statistically correct treatment of incomplete runs. The objective is not to make every run finish successfully. It is to make every run finish with a truthful, reproducible terminal cause.
 
 ## 2. Intuition first
 
-A run can end for exactly three kinds of reason: *it worked* (verified success), *it should not continue* (safety or policy says stop), or *it may not continue* (a resource ran out). The model's opinion that it is finished belongs to none of the three — it is evidence for evaluating the first, never the verdict. Budgets exist because the second and third kinds must be decidable without cooperation from the thing being stopped: a budget is a promise to the operator that no run, however confused, can spend more than $B$. The design problem is to make the first kind (verified success) the *common* terminal cause and the budget backstops the *rare* ones — because every budget-stop is, definitionally, a run the detection layer failed to conclude on merit (Chapter 1, Topic 8).
+Three questions should remain separate:
 
-## 3. The termination predicate
+1. **Was the task completed to the declared acceptance standard?**
+2. **Is further execution permitted and operationally possible?**
+3. **Is further execution still useful enough to justify its resource cost?**
 
-From the notation contract (Ch. 1, Topic 12 §3.3), evaluated after each decision event:
+A validator can answer the first only within its stated coverage. Policy gates, external cancellation, unrecoverable errors, and hard budgets answer the second. A plateau detector or a model stop proposal can inform the third. Collapsing these questions creates familiar errors: unverified model stops reported as success, intended budget caps diagnosed as system faults, or unsafe continuation after a policy block.
 
-$$
-\kappa_t=\mathsf K\!\left(\hat\tau_{0:t},\,b_t^{\mathrm{rem}},\,v_t\right)\in
-\{\mathrm{continue},\,\mathrm{success},\,\mathrm{model\_stop},\,\mathrm{budget},\,\mathrm{timeout},\,\mathrm{execution\_error},\,\mathrm{policy\_block}\},
-$$
+Budgets are therefore control limits, not correctness oracles. A hard budget bounds admitted work only to the precision of the enforcement mechanism. Provider billing lag, non-preemptible tool calls, and already-dispatched work can produce overshoot unless the harness reserves their worst-case cost before dispatch.
 
-with $b_t^{\mathrm{rem}}$ the remaining budgets and $v_t$ any validator/environment terminal signal. The source-specified content of $\mathsf K$'s success branch: "termination should... be governed by verification rather than by model confidence: a loop can stop when required checks pass, when additional attempts no longer improve the state, when the risk tier changes, or when human review is required" [CAH §3.4.4]. Reading those four clauses as predicate structure **[synthesis — formalization ours; clauses sourced]**:
+## 3. Typed termination semantics
 
-$$
-\kappa_t=\mathrm{success} \iff v_t=\text{pass on the declared check set}
-$$
+Let the remaining resource vector be
 
 $$
-\kappa_t\in\{\mathrm{model\_stop},\ \text{escalate}\} \iff \text{no-progress}(\hat\tau_{t-w:t}) \ \lor\ \text{tier-change} \ \lor\ \text{review-required}
+\mathbf b_t^{\mathrm{rem}}
+=
+\left(
+n_t^{\mathrm{rem}},
+q_t^{\mathrm{rem}},
+\ell_t^{\mathrm{rem}},
+d_t^{\mathrm{rem}}
+\right),
 $$
 
-The no-progress clause deserves engineering attention it rarely gets: "additional attempts no longer improve the state" requires a *state-improvement metric* over a trailing window $w$ — verification scores, failing-test counts, diff churn — and it is the principled replacement for both infinite retry loops and arbitrary retry caps. A run that plateaus should stop *as a detected plateau* (escalation or clean model-stop), not by exhausting its budget noisily.
+where the coordinates represent remaining decision events, tokens, wall-clock time, and monetary spend. Let
 
-The model-side stop signal — the no-tool-call emission [CAL] — enters $\mathsf K$ as the *trigger to evaluate* the success branch. If validation passes, $\kappa=\mathrm{success}$; if it fails or does not exist, the honest terminal class is $\mathrm{model\_stop}$: an unverified completion proposal, reported as such (Topic 3 §5.2).
+$$
+v_t \in
+\{\mathrm{pass},\mathrm{fail},\mathrm{unknown}\}
+$$
 
-## 4. The four budget families
+be the decision of the declared validator suite. The harness computes
 
-| Family | Mechanism | Enforcement semantics | Failure it bounds |
+$$
+\kappa_t
+=
+\mathsf K\!\left(
+\hat\tau_{0:t},
+\mathbf b_t^{\mathrm{rem}},
+v_t,
+p_t,
+e_t,
+x_t
+\right)
+\in
+\left\{
+\begin{array}{l}
+\mathrm{continue},
+\mathrm{success},
+\mathrm{model\_stop},
+\mathrm{budget},
+\mathrm{timeout},\\
+\mathrm{execution\_error},
+\mathrm{policy\_block},
+\mathrm{cancelled}
+\end{array}
+\right\},
+$$
+
+where $p_t$ is policy state, $e_t$ is execution-error state, and $x_t$ is an external lifecycle signal. This preserves the Chapter 1 distinction between the model proposal $y_t$, the admitted action $\widetilde a_t$, the executed action $a_t$, and the harness terminal status $\kappa_t$.
+
+The implementation must publish deterministic precedence. A defensible default is:
+
+1. record and reconcile any already-dispatched effect;
+2. honor a policy block or external cancellation;
+3. terminate on an unrecoverable execution error;
+4. terminate on an expired hard deadline;
+5. terminate on an exhausted hard step, token, or cost budget;
+6. declare success only when the declared acceptance predicate passes;
+7. map an unvalidated model completion proposal to $\mathrm{model\_stop}$;
+8. otherwise continue.
+
+This order is a policy choice, not a universal theorem. For example, a safety system may preserve $\mathrm{policy\_block}$ as the primary terminal cause even if the deadline expires at the same event. The invariant is that precedence is deterministic, the primary cause is unique, and secondary coincident causes remain in the trace.
+
+### 3.1 What a success status means
+
+Let $A(Q,\hat\tau_{0:t})$ be the declared acceptance predicate for task $Q$. Then
+
+$$
+\kappa_t=\mathrm{success}
+\quad\Longleftrightarrow\quad
+A(Q,\hat\tau_{0:t})=1
+$$
+
+within the validator's stated scope. This is a **declared-success guarantee**, not proof of latent ground truth. A weak, incomplete, or contaminated validator can still return a false positive. Production reports must therefore identify the validator version, check coverage, and any human-review requirement.
+
+A no-progress detector is also not a substitute for hard limits. It is a soft decision aid:
+
+$$
+\mathrm{plateau}_t
+=
+\mathbb 1
+\left[
+\max_{i\in\{t-w+1,\ldots,t\}}
+\Delta s_i
+<\varepsilon
+\right],
+$$
+
+where $s_i$ is a domain-specific progress signal, $w$ is a predeclared window, and $\varepsilon$ is a meaningful improvement threshold. Noisy or weak-oracle domains require uncertainty-aware variants and may map a plateau to review or $\mathrm{model\_stop}$ rather than success.
+
+## 4. Budget families and enforcement contracts
+
+| Budget | Accounted quantity | Typical enforcement point | Important exception |
 |---|---|---|---|
-| **Steps/turns** | `max_turns` (counts tool-use turns) [CAL] | Loop refuses further turns; terminal subtype `error_max_turns` | Unbounded exploration; retry spirals |
-| **Tokens** | Context/window management plus usage accounting [CAL] | Compaction pressure; per-run usage in $\hat\tau$ | Context saturation; runaway generation |
-| **Time** | Timeouts, fixed per task in evaluation protocols [HB Table 1] | Hard wall-clock cut; `timeout` terminal class | Hangs; environment stalls |
-| **Cost** | `max_budget_usd` [CAL] | Spend ceiling; `error_max_budget_usd` | Monetary blowout; the operator's promise |
+| Step or turn | Harness-defined decision events or tool-use turns | Before admitting the next event | Vendors count “turn” differently; publish the unit |
+| Token | Input, cached input, output, or their declared aggregate | Before a model request and after usage is reported | Context-window management and total-run usage are different limits |
+| Time | Monotonic elapsed time and nested deadlines | Before dispatch, during cancellable work, and after return | Non-preemptible work may finish after the deadline |
+| Cost | Priced usage plus reserved in-flight work | Before dispatch and after billing reconciliation | Prices, delayed usage reports, and tool charges can create accounting lag |
 
-Design semantics the sources fix. Budgets are **harness-enforced and model-independent** — which matters because the model's *internal* budget representation is demonstrably unreliable in both directions: self-rationing at 0.15% of available budget on a false exhaustion belief [FSC §6.4.1.4]. Corollary **[derived]**: make true budget state *visible* to the model (as data), never *delegated* to it (as control) — visibility addresses the self-rationing failure; delegation would recreate it with authority. Budgets compose across levels (per-turn, per-subagent, per-run, per-portfolio); the binding constraint should be chosen per consequence class, and "budget as a good default for production agents" is the vendor's own stated posture [CAL].
+Budgets may be **soft** or **hard**. A soft threshold can trigger compaction, strategy change, or review. A hard threshold prevents additional admission. They may also be hierarchical: a subagent budget is bounded by the run budget, which is bounded by a portfolio or tenant budget. The accounting hierarchy must prevent double counting while still reserving parent capacity for child work.
 
-## 5. Termination and measurement: censoring, not embarrassment-hiding
+For an operation $u$ with conservative reservation $r(u)$ and committed spend $c_t$, budget-safe admission is
 
-Budget- and timeout-terminated runs are *censored observations*, and the notation contract's rules apply (Ch. 1, Topic 12 §7): for service-level completion they may count as failures; for time-to-event analysis they may be right-censored when the censoring assumptions are defensible; report both views, and never silently drop them [KM via Ch. 1, Topic 12]. Three reporting obligations follow:
+$$
+\mathsf{AdmitBudget}(u)
+=
+\mathbb 1[c_t+r(u)\le B].
+$$
 
-1. **The $\kappa$ distribution is a first-class result** — the split among success / model-stop / budget / timeout / error across a run population, with task-clustered intervals. A configuration whose failures are mostly `budget` differs diagnostically from one whose failures are mostly `execution_error`, at identical success rates.
-2. **Budget sensitivity is part of the configuration's identity:** the same $(M_c,H_c)$ under different $B_c$ is a different configuration $c$ (the tuple includes $B_c$), and comparisons across budget settings are configuration comparisons, not free variations. Evaluation protocols fix budgets and timeouts per task for exactly this reason [HB §3.1, Table 1].
-3. **Backstop-firing rate is the detection-failure metric** (Chapter 1, Topic 8 §7): each `budget`/`timeout` termination is a run the verification layer neither concluded nor escalated; trend it.
+If actual incremental spend satisfies
 
-## 6. Failure modes
+$$
+\Delta c(u)\le r(u)+\epsilon_u,
+$$
 
-- **Model-stop reported as success:** the unverified completion accepted because the loop's native stop condition fired [CAL] — the premature-completion pipeline from Chapter 2, Topic 14 §4, laundered by reporting.
-- **Budget as the only working stop:** no validator set, no no-progress detector; every hard task ends in `error_max_turns` and the spend is pure waste — the plateau clause of [CAH §3.4.4] unimplemented.
-- **Unhandled terminal subtypes:** callers reading `result` without checking subtype (only `success` carries it [CAL]); a budget-stop silently becomes an empty-output "success" downstream.
-- **Self-rationing unmeasured:** model-initiated stops with large unspent budgets on incomplete tasks — the [FSC §6.4.1.4] signature; instrument unspent-budget-at-model-stop as a standing metric.
-- **Mid-turn message loss at limits:** the documented queue-into-ending-turn defect class (a message arriving on the final iteration "consumed into the ending turn and lost" pre-fix [CAL]) — termination boundaries are where interruption handling is most fragile; test them.
-- **Censoring malpractice:** dropping timed-out runs from the denominator; the contract's failure-mode list names it directly ("censored runs silently removed" — Ch. 1, Topic 12 §12).
-- **Budget arms race:** raising $B_c$ to make failures disappear instead of diagnosing why runs need the extra spend; the turn/token spread across harnesses at similar or inverse quality [HB Table 2, §4.2] says spend is not merit.
+then terminal overshoot is bounded by the reservation error $\epsilon_u$ plus any explicitly admitted concurrent reservations. Without this assumption, “hard cost cap” is an aspiration rather than an enforceable contract. Systems should report reserved, committed, invoiced, and reconciled spend separately.
 
-## 7. Limitations
+Budget enforcement is not necessarily located only in the harness. A provider, client library, tool server, operating system, or workload scheduler may enforce part of the limit. The system record must name the enforcing layer and the granularity at which it can interrupt work.
 
-- The no-progress predicate requires a domain progress metric; in weak-oracle classes (Chapter 1, Topic 11) the available metrics are judge-mediated, importing judge noise into termination itself — an unavoidable coupling this book can only insist be *declared*.
-- The [CAH §3.4.4] stop conditions are stated for code-agent loops; their transfer to conversational or research classes is a synthesis (plateau detection over judged quality is measurably weaker than over failing-test counts).
-- No source in the ledger quantifies the optimal budget-setting problem (the trade between censoring rate and spend); Topic 14's paired methodology with $B_c$ as the treatment is the honest way to answer it locally.
+## 5. Measurement semantics
 
-## 8. Production implications
+Budget, timeout, and cancellation outcomes are observed terminal causes. Whether they are also treated as censored observations depends on the estimand:
 
-1. **Implement $\mathsf K$ explicitly** — a named function with the three branches of §2's intuition, not an emergent property of scattered checks; log its inputs ($v_t$, budgets, trigger) with every terminal event.
-2. **Declare the check set per task class:** what validator pass constitutes $\mathrm{success}$; a task class without a declared check set can only ever produce $\mathrm{model\_stop}$, and its dashboard should say so.
-3. **Build the plateau detector** (trailing-window state-improvement) before raising any budget; most `error_max_turns` populations are plateaus that should have stopped cheaply and been escalated.
-4. **Set budgets per consequence class, compose per level** (turn/subagent/run), and alarm on backstop-firing rate, not just spend.
-5. **Report the $\kappa$ distribution with censoring treatment declared** (§5) in every evaluation and every production review; a success rate without its terminal-cause distribution is a number without its meaning.
+- For service-level task completion by a deadline, they normally remain failures in the denominator.
+- For time-to-valid-success, a run may be right-censored only when follow-up stopped for a reason compatible with the survival model's assumptions. Administrative study cutoff is a common example.
+- A budget selected in response to task difficulty is informative censoring. Treating it as independent censoring can bias survival estimates.
+- When timeout, cancellation, and execution failure preclude later success, competing-risk analysis or an explicit multi-state outcome is often more honest than ordinary Kaplan–Meier estimation.
 
-## 9. Connections
+At minimum, report:
 
-- This topic instantiates the terminate phase of Topic 3 and the resource-invariant class of Topic 7; Topic 9 handles what happens when termination is *imposed* (cancellation) rather than decided.
-- Chapter 10 owns verified stop conditions over long horizons and budget management across sessions; Chapter 13 inherits the censoring discipline; Chapter 14 owns spend governance at fleet scale.
+$$
+\Pr(\kappa=k),\qquad
+\Pr(\mathrm{success}),\qquad
+\text{time-to-valid-success},\qquad
+\text{resource use}\mid\kappa,
+$$
+
+plus budget overshoot, remaining budget at incomplete model stop, false-stop rate, and false-continue rate. A backstop-firing rate is diagnostic, but it is not automatically a detection-layer failure: the cap may be intentional and correctly enforced.
+
+## 6. Failure modes and exceptions
+
+- **Model stop laundered into success:** no acceptance predicate passed.
+- **Validator overclaim:** a passing check set is reported as ground truth despite incomplete coverage.
+- **Undeclared precedence:** simultaneous timeout and policy failure produce nondeterministic terminal labels.
+- **Unit ambiguity:** one system counts model calls while another counts tool-use turns.
+- **Reactive accounting:** cost is checked only after an expensive request has already been dispatched.
+- **Token conflation:** context compaction is treated as if it bounded cumulative run usage.
+- **Plateau-only control:** a noisy progress signal permits an infinite loop because no hard cap remains.
+- **Hard-cap-only control:** repeated futile work reaches the cap even though a reliable plateau signal appeared earlier.
+- **Dropped incomplete runs:** timeout or budget outcomes disappear from the denominator.
+- **Overinterpreted model telemetry:** internal activations associated with budget beliefs are treated as proof of a specific propositional belief or causal mechanism. Such evidence is suggestive unless the study establishes the stronger interpretation.
+
+## 7. Production protocol
+
+1. Version $\mathsf K$, its precedence, its acceptance predicates, and every budget unit.
+2. Use a monotonic clock and propagate nested deadlines.
+3. Reserve worst-case or high-confidence resource use before dispatch; reconcile after completion.
+4. Record primary and secondary terminal causes, validator evidence, budget snapshots, reservations, and in-flight effects.
+5. Keep hard caps even when soft plateau detection is available.
+6. Test boundaries: the final admitted turn, cancellation during a mutation, delayed provider usage, simultaneous terminal signals, and resume immediately after a budget stop.
+7. Review terminal-cause and overshoot distributions by task class, model, harness version, and consequence tier.
+
+## 8. Connections
+
+Topic 9 defines the effect reconciliation required when cancellation or interruption occurs near a terminal boundary. Topic 10 defines the error variants consumed by $\mathsf K$. Topic 14 specifies experiments for selecting budgets and plateau policies without changing the estimand silently.
 
 ## Sources
 
-[CAL] Claude Agent SDK, "How the agent loop works" (budgets, terminal subtypes, streaming-input note) — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.4.4
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §6.4.1.4
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.1, §4.2, Tables 1–2
-[KM] Kaplan and Meier, via the book's notation contract (Ch. 1, Topic 12 §7) — https://doi.org/10.1080/01621459.1958.10501452
+[CAL] Claude Agent SDK, “How the agent loop works” — https://code.claude.com/docs/en/agent-sdk/agent-loop
+
+[CAH] *Code as Agent Harness*, arXiv:2605.18747, §3.4.4 (Knowledge_source/2605.18747v1.pdf)
+
+[FSC] *Claude Fable 5 & Mythos 5 System Card*, §6.4.1.4 (Knowledge_source/)
+
+[HB] *Harness-Bench*, arXiv:2605.27922, §3.1, §4.2, Tables 1–2 (Knowledge_source/2605.27922v1.pdf)
+
+[KM] Kaplan and Meier, “Nonparametric Estimation from Incomplete Observations” — https://doi.org/10.1080/01621459.1958.10501452

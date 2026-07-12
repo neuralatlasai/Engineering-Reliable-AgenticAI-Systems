@@ -38,7 +38,7 @@ Embodied systems add sensor fusion, coordinate frames, actuator dynamics, contro
 
 ## 4. Formal model
 
-For task specification $\mathcal Q$, let $M$ be the number of observation modalities, $x_t^{(m)}$ the raw observation from modality $m$, and $h_t$ the synchronized observable history. Let $y_t^{\mathrm{act}}$ be the model's intended-action proposal, $\widetilde a_t$ the grounded and admitted action, and $a_t$ the executed action. A single-agent specialization of Chapter 1's model is
+For task specification $\mathcal Q$, let $N_{\mathrm{mod}}$ be the number of observation modalities, $x_t^{(m)}$ the raw observation from modality $m$, and $h_t$ the synchronized observable history. Let $y_t^{\mathrm{act}}$ be the model's intended-action proposal, $\widetilde a_t$ the grounded and admitted action, and $a_t$ the executed action. A single-agent specialization of Chapter 1's model is
 
 $$
 x_t^{(m)}
@@ -49,7 +49,7 @@ $$
 $$
 \varphi_t
 \sim
-F_R(\cdot\mid x_t^{(1:M)},h_t,\mathcal Q),
+F_R(\cdot\mid x_t^{(1:N_{\mathrm{mod}})},h_t,\mathcal Q),
 $$
 
 $$
@@ -64,7 +64,7 @@ a_t=\operatorname{Exec}(\widetilde a_t),
 s_{t+1}\sim \Psi(\cdot\mid s_t,a_t,\mathcal Q),
 $$
 
-Here $s_t$ is latent environment state; $\delta_t^{(m)}$ is observation delay; $\nu_t^{(m)}$ collects channel conditions such as truncation, viewport, resolution, or noise; $F_R$ is the fusion/representation kernel; $m_a$ identifies the selected action interface; $G_{m_a}$ is its grounding-and-admission kernel; and $\Psi$ is the task-conditioned environment transition kernel. At $t=0$, use the initialization sentinel $a_{-1}=a_\varnothing$ from Chapter 1. Multiple modalities may observe overlapping but non-identical state.
+Here $s_t$ is latent environment state; $\Omega_m$ is modality $m$'s observation kernel; $\delta_t^{(m)}$ is observation delay; and $\nu_t^{(m)}$ collects channel conditions such as truncation, viewport, resolution, or noise. The random variable $\varphi_t$ is the fused decision representation sampled through fusion kernel $F_R$. The index $m_a$ identifies the selected action interface, $G_{m_a}$ is its grounding-and-admission kernel, and $\operatorname{Exec}$ is the control-plane operator that dispatches an admitted action or records a typed no-op/failure. Finally, $\Psi$ is the task-conditioned environment transition kernel. At $t=0$, use the initialization sentinel $a_{-1}=a_\varnothing$ from Chapter 1. Multiple modalities may observe overlapping but non-identical state.
 
 If step success requires correct perception $P_t$, decision $D_t$, grounding $G_t$ and effect $E_t$, the exact chain rule is
 

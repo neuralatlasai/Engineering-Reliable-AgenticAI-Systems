@@ -6,19 +6,19 @@ Topic 1 defined the harness; this topic draws the full system diagram around it.
 
 ## 2. Intuition first
 
-Separation of concerns is not aesthetics; it is the precondition for substitution, testing, and attribution. The formal harness object made this concrete: because 𝓜 and 𝓒 are separate, "two agents sharing 𝓒 but differing in 𝓜 execute the same processor pipeline" [HX §3.1] — model swaps become experiments instead of rewrites. The same logic applies at every boundary in this topic: each clean interface is a place where you can swap, mock, measure, or revoke *one thing*. Each fusion is a place where you cannot.
+Separation of concerns enables controlled substitution, testing, and attribution. HarnessX makes one boundary explicit: because $\mathcal M$ and $\mathcal C$ are separate, agents sharing $\mathcal C$ but differing in $\mathcal M$ execute the same processor pipeline [HX §3.1]. That property supports a model-swap experiment only when all other configuration and environment variables are held fixed. The same discipline applies to the remaining boundaries: each interface should expose what can be swapped, mocked, measured, or revoked.
 
 ## 3. The seven components and their contracts
 
-**Model (𝓜).** The stochastic policy, consumed through its API surface (Chapter 2). Contract with the harness: assembled context in, proposals out — text, tool-call requests, or both [CAL]. Everything else is someone else's job; Chapter 2 Topic 1's guarantee inventory is the interface specification.
+**Model ($M_c$).** The stochastic proposal policy $\pi_M$, consumed through its API surface (Chapter 2). Its harness-facing contract is assembled context $c_t$ in and proposal $y_t$ out—text, tool-call requests, or both [CAL]. It does not own application authorization or environment commit semantics.
 
-**Harness (𝓒).** The control plane (Topic 1). In the formal decomposition, note *where the processors end and the slots begin*: P implements "all per-step behavior"; S houses "the shared infrastructure that processors depend on but do not own" — tool registry, tracer, workspace, sandbox provider, plugin list, as singletons [HX §3.1]. That per-step/shared split is the harness's own internal separation, and it previews Topic 6's control/data-plane divide.
+**Harness ($H_c$).** The execution control plane (Topic 1). HarnessX's paper notation decomposes $\mathcal C=(P,S)$, with $P$ implementing per-step processor behavior and $S$ housing shared infrastructure [HX §3.1]. This is an ownership/composition split, not itself a control-plane/data-plane boundary; both processors and slots may carry control or data responsibilities.
 
-**Environment.** "External to the agent... the task workspace, files, local services, and resources exposed during execution" [HB §3]. The environment is *not* implemented by anyone in the system — it is what the system acts on. Its interface is Ψ (Chapter 1, Topic 2): actions in, state changes out, observed only through tools and sensors. Sandboxing is the deliberate construction of a *substitute* environment with reset semantics [CAH §3.4.3; HB §3.2] — the environment made swappable for testing, which is exactly the separation logic applied to the one component you don't control.
+**Environment.** External to the measured agent, the environment contains the task workspace, files, services, and resources exposed during execution [HB §3]. It may be implemented by the same organization, but it has an independent state and failure contract. In Chapter 1 notation, executed $a_t$ affects latent state through $\Psi$; the harness observes projections through tools and sensors. Sandboxing constructs a bounded environment with declared reset and isolation semantics [CAH §3.4.3; HB §3.2].
 
 **Tools.** The action interface: registry and calling convention owned by the harness [HX's S; HB §3], implementations facing the environment with their own contracts — schemas, mutation typing, preconditions (Chapters 2.5–2.6, 5). The boundary discipline runs both directions: the harness must not know tool internals (or every tool change is a harness change); tools must not know loop state (or they become un-reusable and un-testable in isolation).
 
-**Policy.** The rules governing what may happen: permission rules and modes, approval requirements, budget ceilings, risk tiers [CAL; CDX; CAH §3.4.3]. Policy deserves its separation from the harness *mechanism* for a reason the sources state directly: governance should live "outside the prompt alone," in "gateway and policy layers... centralized guardrails, security automation, and falsifiable approval evidence" [CAH §3.4.3]. Policy-as-configuration can be reviewed, diffed, and audited; policy-as-prompt-prose can be argued with — by the model, which Chapter 2 Topic 14 showed is an optimizer against its instructions' letter.
+**Policy.** Permission rules, approval requirements, budget ceilings, and risk tiers govern what may happen [CAL; CDX; CAH §3.4.3]. Policy data should be versioned separately from the mechanism that evaluates it. Prompt instructions can influence $y_t$ but cannot replace a complete admission check over canonicalized actions and trusted policy state.
 
 **Storage.** Durable state beyond the run: session/event history, memory stores, artifacts, plans. The reference architecture separates these as named services — "Services: persistence layer managing Sessions, Artifacts, Memory; called by Runner during event processing" [ADK] — and the separation matters because each has different lifecycle, tenancy, and deletion semantics (Chapter 7). Conversation history is not a database; the plan file is not a memory; treating them interchangeably is how Chapter 1 Topic 3's compaction hostages happen.
 
@@ -44,13 +44,13 @@ Separation of concerns is not aesthetics; it is the precondition for substitutio
                │   ENVIRONMENT (workspace, services; observed via sensors)
 ```
 
-**[derived — diagram ours; every edge sourced in §3]** Two structural readings. First, *the harness touches everything and owns almost nothing* — it is the coordinator, and its size should reflect that (coordination logic, not business logic). Second, *the model touches only the harness* — every other component reaches the model exclusively through context assembly and proposal handling, which is what makes the harness the single enforcement point (Topic 6) and the single point whose corruption poisons everything (Chapter 12's injection surfaces).
+**[derived—diagram ours; every edge sourced in §3]** The harness coordinates these components but should not absorb their domain logic. On the fully governed path, other components influence the model through context assembly and model proposals reach effects through parse, admission, and dispatch. Hosted tools or direct side channels can bypass this path; such bypasses must be explicit rather than hidden behind a “single enforcement point” claim.
 
 ## 5. Evidence that the boundaries pay
 
-- **𝓜/𝓒:** substitution as experiment — the entire Harness-Bench factorial design (8 backends × 6 harnesses) is only possible because the boundary exists [HB §4.1]; its 23.8-point finding is only *interpretable* because of it.
+- **$M_c/H_c$:** substitution as experiment—the Harness-Bench factorial design crosses eight backends with six harnesses [HB §4.1]. Its aggregate 23.8-point contrast motivates configuration-aware evaluation; model-specific causal effects require the corresponding within-model contrasts and uncertainty.
 - **Environment:** trial isolation — "each trial must start from a clean environment" with "no unnecessary shared state between runs"; violations cause "correlated failures due to infrastructure flakiness rather than agent performance" and score inflation (an agent "examining git history from previous trials" gained unfair advantage) [DEM]. The environment boundary is what makes measurements mean anything.
-- **Policy:** the three-tier permission model — read-only / sandbox-edit / full-access, with the final tier "guarded by mandatory human-in-the-loop gates because their consequences can extend beyond the sandbox" [CAH §3.4.3] — is expressible *only* as separated policy; no prompt can enforce a tier.
+- **Policy:** CAH describes read-only, sandbox-edit, and full-access tiers, with human review at the highest-consequence boundary [CAH §3.4.3]. Current Codex documentation separately describes OS-enforced sandbox modes and approval policy, including read-only and workspace-write operation [CDX]. These are provider-specific mechanisms, not one universal tier taxonomy.
 - **Storage:** commit-before-continue — state changes packaged as `state_delta` in events, persisted by services before execution resumes [ADK] — is a storage discipline that exists only because storage is a component with its own contract, not a side effect scattered through loop code.
 - **UI:** graded outcomes vs. agent claims — "the final environmental state (e.g., whether a database entry exists, not just what the agent claimed)" [DEM] — requires that what the UI shows humans be sourced from environment/storage, not from model narration; a UI fused to the model's output channel shows users the hallucinated-state failure mode (Chapter 2, Topic 14) as if it were telemetry.
 
@@ -61,7 +61,7 @@ Separation of concerns is not aesthetics; it is the precondition for substitutio
 | Policy in prompts | "Musts" written as prose; model argues or drifts | Tendency where a guarantee is needed [Ch.2 T13 §7] | Permission rules, hooks, tiers [CAL; CAH §3.4.3] |
 | Storage in history | Constraints and progress lost at compaction | Belief-state hostage [CAL; Ch.1 T3] | Plan files, services, re-injected instructions |
 | Environment in tools | Tools hard-coding paths, hosts, credentials | Untestable outside prod; sandbox impossible | Environment injection via workspace/sandbox slots [HX S] |
-| Harness in application | Fallback branches silently hand π_D control to π_M | Least-tested path becomes an unmanaged agent [Ch.1 T1 §7] | Explicit class boundary per code path |
+| Harness in application | A deterministic $D_c$ branch silently begins consulting $\pi_M$ | Least-tested path becomes an unmanaged proposal loop [Ch.1 T1 §7] | Explicit class boundary and admission path per code path |
 | UI in policy path | Approval logic in the client | Security boundary varies by attached frontend | Approval as policy event; UI renders it [CDX routing] |
 | Model in verification | Judge shares the failure mode of the judged | Verification theater [Ch.1 T8 §7] | Deterministic sensors first [CAH §3.4.4] |
 | Evaluator in harness | Graders reading agent claims, or agent reading grader fixtures | Integrity violations; score inflation [HB §3.2; DEM] | Evaluator external, fixtures protected |
@@ -71,7 +71,7 @@ Separation of concerns is not aesthetics; it is the precondition for substitutio
 ## 7. Limitations
 
 - Clean separation has real costs — indirection, latency at boundaries, more surface to version — and small systems legitimately start fused. The engineering claim is not "always separate everything" but "know which fusions you are carrying, and unfuse before scale or consequence arrives." The minimal-agent principle (Chapter 1, Topic 10) applies to architecture ceremony too.
-- The seven-way partition is this book's synthesis; the sources each draw a subset (𝓜/𝓒 [HX], harness/environment/evaluator [HB], services [ADK]). No source draws all seven, and the boundaries between policy/harness and storage/harness genuinely blur in shipped systems (Topic 13 shows where).
+- The seven-way partition is this book's synthesis; the sources each draw a subset ($\mathcal M/\mathcal C$ [HX], harness/environment/evaluator [HB], services [ADK]). No source draws all seven, and policy/harness and storage/harness boundaries vary across implementations.
 - The diagram's "single enforcement point" property (§4) is an architectural aspiration; hosted tools (Chapter 2, Topic 9) breach it by construction, and those breaches must be tracked as exceptions, not ignored.
 
 ## 8. Production implications
@@ -95,4 +95,4 @@ Separation of concerns is not aesthetics; it is the precondition for substitutio
 [ADK] Google ADK runtime event-loop documentation — https://adk.dev/runtime/event-loop/
 [DEM] Anthropic, Demystifying evals for AI agents — https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
 [CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[CDX] OpenAI Codex documentation, sandboxing and approvals — https://learn.chatgpt.com/docs/sandboxing
+[CDX] OpenAI Codex documentation, agent approvals and security — https://learn.chatgpt.com/docs/agent-approvals-security

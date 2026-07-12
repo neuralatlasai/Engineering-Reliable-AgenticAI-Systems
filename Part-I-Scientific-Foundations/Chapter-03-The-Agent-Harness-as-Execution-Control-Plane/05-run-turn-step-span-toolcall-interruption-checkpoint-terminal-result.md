@@ -18,15 +18,15 @@ $$
 \mathsf R_{jrc}=\operatorname{Run}(c,\,Q_j,\,\mathcal E_j),
 $$
 
-producing an observable record $\hat\tau_{jrc}$ and an evaluation vector $\mathbf Z_{jrc}=(G,V,L,\mathsf{Cost},T,\kappa_K)$ (Ch. 1, Topic 12 §4). The subscripts carry the statistics: task $j$, repetition $r$, configuration $c$ — a "run" without all three identifiers is not a reportable object. The evaluation literature's *trial* is this unit under a benchmark protocol, with the added discipline that "each trial must start from a clean environment" [DEM].
+where $Q_j$ is task $j$, $\mathcal E_j$ its environment and fixtures, $r$ a stochastic repetition, and $c$ the full versioned configuration. The run produces observable record $\hat\tau_{jrc}$ and evaluation vector $\mathbf Z_{jrc}=(G,V,L,\mathsf{Cost},T,\kappa_K)$: completion grade, critical-violation indicator, consequence-weighted loss, cost, latency, and terminal status [Ch. 1, Topic 12 §4]. The latent trajectory $\tau^\star_{jrc}$ is not identified with this record. Evaluation vocabulary calls one protocol-governed attempt a *trial* and requires an isolated initial environment [DEM].
 
 ### 3.2 Turn
 
-One model round trip: "Claude produces output that includes tool calls, the SDK executes those tools, and the results feed back to Claude automatically... Turns continue until Claude produces output with no tool calls" [CAL]. ADK's corresponding unit is the *invocation* — "a complete request-response cycle" identified by `invocation_id` within `InvocationContext` [ADK]. Turns are the natural unit for budget accounting (`max_turns` counts tool-use turns [CAL]) and for latency decomposition, because each turn carries one full model inference.
+One model round trip in this book. Current Claude Agent SDK documentation defines a turn as one output/tool-result round trip and states that `max_turns` counts tool-use turns [CAL]. ADK's *invocation* is a complete request–response cycle, but it is not asserted to be semantically identical across every workflow [ADK]. Provider terms are mapped to the book's unit dictionary rather than treated as universal definitions.
 
 ### 3.3 Step (decision event)
 
-The index $t$ of the notation contract: one pass through the typed stages $C_t\to Y_t\to\Xi_t\to\widetilde A_t\to A_t\to\kappa_t$ (Topic 3 §5). In the reference runtimes a turn and a step usually coincide; they diverge when a harness adjudicates multiple proposal rounds without re-invoking the model, or splits one model emission into separately admitted actions. The book's convention: **reliability mathematics indexes steps; operational dashboards may aggregate to turns; the mapping between them is part of the configuration's documentation.** [synthesis]
+The index $t$ of the notation contract: one decision event containing $c_t\rightarrow y_t\rightarrow\widetilde a_t\rightarrow a_t$, evidence update, and $\kappa_t$ evaluation (Topic 3 §5). A provider's “turn,” “event,” or “invocation” may aggregate or split these operations. Reliability mathematics indexes declared decision events; dashboards may aggregate to provider turns only after documenting the mapping. **[synthesis]**
 
 ### 3.4 Span
 
@@ -34,7 +34,7 @@ Any timed, attributed segment of the trace: a model inference, a tool execution,
 
 ### 3.5 Tool call
 
-The unit with the most important type discipline (Chapter 2, Topic 5): a *candidate* in $\Xi_t$, an *admitted* element of $\widetilde A_t$, an *executed* element of $A_t$ — with parse failure, rejection, and timeout as explicit recorded outcomes rather than silent absences (Ch. 1, Topic 12 §3.3). A tool call additionally carries its mutation type (read-only vs. state-modifying), which determines its concurrency treatment [CAL] and its checkpoint relevance (§3.7).
+The unit with the most important type discipline (Chapter 2, Topic 5): candidate $\xi_{t,k}$ parsed from $y_t$, admitted action $\widetilde a_{t,k}$, and executed action $a_{t,k}$ are distinct. Parse failure, rejection, ambiguous timeout, and no-op are explicit outcomes. Read/write sets, idempotency, and isolation—not a “read-only” label alone—determine safe concurrency; the current Claude Agent SDK's read-only/serial rule is one conservative implementation [CAL].
 
 ### 3.6 Interruption
 
@@ -42,11 +42,11 @@ Any event that suspends the hierarchy from outside the current unit: a mid-turn 
 
 ### 3.7 Checkpoint
 
-A named point from which execution can be re-entered with known state: a committed event (the ADK yield-commit-resume boundary, after which resumed code "can reliably assume that the state changes... have been committed" [ADK]), a resumable session ID with restored context [CAL], a persisted plan object with milestone status [CAH §3.1.1], a sandbox snapshot enabling replay of "the same patch, command, seed, dependency lockfile" [CAH §3.4.3]. The engineering content is the *pairing*: every checkpoint must record both agent-side state (what the run believed and intended) and environment-side state (what the workspace actually was) — a checkpoint of one without the other resumes into Chapter 1 Topic 3's state–belief divergence. **[synthesis]**
+A named, durable point from which execution may be re-entered under declared preconditions: a processed ADK event, a resumable SDK session, a persisted plan milestone, or a sandbox snapshot [ADK; CAL; CAH §3.1.1, §3.4.3]. A valid checkpoint records or references compatible harness state, policy/configuration versions, and environment version/effect status. It need not copy the entire environment, but it must detect or reconcile divergence before an effectful retry. **[synthesis]**
 
 ### 3.8 Terminal result
 
-The typed verdict: $\kappa_K$ plus the closing record. The reference runtime's `ResultMessage` carries subtype (`success`, `error_max_turns`, `error_max_budget_usd`, `error_during_execution`), final text, token usage, cost, and session ID, with `stop_reason` (`end_turn`, `max_tokens`, `refusal`) preserving the model-side cause [CAL]. Two disciplines from the sources: the result field is only present on `success` — "always check the subtype before reading it" [CAL]; and *model-proposed completion is not validated success* — the terminal classification a production system reports should distinguish $\mathrm{model\_stop}$ from validator-confirmed $\mathrm{success}$ [CAH §3.4.4; Ch. 1, Topic 12 §3.3].
+The typed verdict is $\kappa_K$ plus the closing record. Current Claude Agent SDK documentation says `ResultMessage` carries a subtype, output, usage, cost, session ID, and model-side `stop_reason`; consumers must branch on subtype [CAL]. Its `success` subtype denotes successful SDK-loop completion, not independent proof of task success. Application reporting must therefore map provider results into $\mathrm{model\_stop}$, validator-confirmed $\mathrm{success}$, or another declared $\kappa_K$ subtype [CAH §3.4.4; Ch. 1, Topic 12 §3.3].
 
 ## 4. The containment map, with its cross-runtime translation
 
@@ -56,7 +56,7 @@ The typed verdict: $\kappa_K$ plus the closing record. The reference runtime's `
 | Turn | Turn (tool-use round trip) | Invocation (`invocation_id`) | — |
 | Step | ≈ turn | Event-processing cycle | Decision event $t$ |
 | Span | Message + hook/tool timings | Event (with `partial` flag for streaming) | Trace segment [CAH §3.5.1] |
-| Tool call | Tool-call block → execution → `UserMessage` result | Action within event processing | $\Xi/\widetilde A/A$ elements |
+| Tool call | Tool-call block → execution → `UserMessage` result | Action within event processing | $\xi/\widetilde a/a$ elements |
 | Interruption | Queued mid-turn input; `worker_shutting_down` | Mid-invocation failure inside dirty-read window | Censored run (Ch. 1, Topic 12 §7) |
 | Checkpoint | Session ID + restored context; `PreCompact` archive | Committed event (`append_event`) | Environment reset point [DEM] |
 | Terminal result | `ResultMessage` subtype + `stop_reason` | Final (non-partial) event of last invocation | $\kappa_K$ in $\mathbf Z$ |
@@ -68,7 +68,7 @@ The typed verdict: $\kappa_K$ plus the closing record. The reference runtime's `
 - **Turns and tokens per run** are the efficiency spine (mean turns ranged 5.0–22.6 and mean tokens 68.7K–175.1K across Harness-Bench configurations at fixed tasks [HB Table 2]) — reportable only because turn and run are typed units.
 - **$\kappa$ distribution per run population** (Topic 3 §8.4): the share of validator-confirmed success vs. model-stop vs. budget/timeout subtypes; interruptions surface here as censoring, to be reported under the censoring-aware view rather than silently dropped (Ch. 1, Topic 12 §7, §12).
 - **Span-level latency quantiles** locate the tail: model inference vs. tool execution vs. permission overhead — undiagnosable at run granularity.
-- **Checkpoint distance** (time or tokens since last committed checkpoint) is the interruption-exposure metric; its maximum over a run bounds worst-case lost work (§3.6). **[derived — metric construction ours]**
+- **Checkpoint distance** (time, steps, or tokens since the last compatible committed checkpoint) measures potential re-execution exposure. It bounds recoverable harness work only when the checkpoint is durable and external effects after it are idempotent, compensatable, or reconciled. **[derived]**
 
 ## 6. Failure modes
 
@@ -104,5 +104,5 @@ The typed verdict: $\kappa_K$ plus the closing record. The reference runtime's `
 [CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.1.1, §3.4.3–3.4.4, §3.5.1
 [DEM] Anthropic, Demystifying evals for AI agents — https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
 [HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.3, Table 2
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §6.4.1.4
-[CDX] OpenAI Codex documentation — https://learn.chatgpt.com/docs/sandboxing
+[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf`) §6.4.1.4
+[CDX] OpenAI Codex documentation, agent approvals and security — https://learn.chatgpt.com/docs/agent-approvals-security

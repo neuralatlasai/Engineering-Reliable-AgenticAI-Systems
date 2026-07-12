@@ -54,7 +54,7 @@ No column dominates. A hosted tool can be the most reliable choice when its cont
 
 ## 5. Assurance and placement rules
 
-Placement is a constrained decision rather than a slogan. For capability $k$, let $Z_k$ be the feasible subset of the six execution/control loci defined in §3. Let $L_k(z)$ be consequence-weighted operational loss in declared application-loss units, $C_k(z)$ monetary cost, and $\operatorname{Latency}_k(z)$ latency in seconds. Conversion weights $\lambda_c$ (loss units per currency unit) and $\lambda_\ell$ (loss units per second) make the scalarization dimensionally explicit:
+Placement is a constrained decision rather than a slogan. For capability $k$, let $Z_k$ be the feasible set of **complete placement configurations** over the six execution/control loci defined in §3; one $z\in Z_k$ specifies where inference, tool execution, control flow, authorization, state, and evidence reside. Let $L_k(z)$ be consequence-weighted operational loss in declared application-loss units, $C_k(z)$ monetary cost, and $\operatorname{Latency}_k(z)$ latency in seconds. Conversion weights $\lambda_c$ (loss units per currency unit) and $\lambda_\ell$ (loss units per second) make the scalarization dimensionally explicit:
 
 $$
 z_k^\star = \arg\min_{z\in Z_k}

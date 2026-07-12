@@ -18,15 +18,16 @@ Let $\mathcal{M}=\{m_1,\ldots,m_M\}$ be the qualified configuration pool and let
 
 $$
 r_i(m)=U_{\mathrm{route}}\!\left(
-Y_i(m),\mathsf{Cost}_i(m),L_i(m),R_i(m)
+\operatorname{Outcome}_i(m),\mathsf{Cost}_i(m),L_i(m),
+\operatorname{Risk}_i(m)
 \right),
 $$
 
-where $Y$ is task outcome, $\mathsf{Cost}$ monetary or compute cost, $L$ latency, $R$ consequence-weighted risk, and $U_{\mathrm{route}}$ a declared unit-consistent utility mapping. At decision $i$, the router selects configuration random variable $M_i^{\mathrm{sel}}$:
+where $\operatorname{Outcome}$ is the evaluated task result, $\mathsf{Cost}$ monetary or compute cost, $L$ latency, $\operatorname{Risk}$ consequence-weighted risk, and $U_{\mathrm{route}}$ a declared unit-consistent utility mapping. At decision $i$, router $\mu_R$ selects configuration random variable $M_i^{\mathrm{sel}}$:
 
 $$
 M_i^{\mathrm{sel}}
-\sim\pi(\cdot\mid \mathbf f_i,\mathcal{H}_{i-1}),
+\sim\mu_R(\cdot\mid \mathbf f_i,\mathcal{H}_{i-1}),
 $$
 
 then normally observes only $r_i(M_i^{\mathrm{sel}})$ after verification. The history $\mathcal{H}_{i-1}$ contains prior routing features, selection propensities, outcomes, versions, and timestamps.
@@ -45,16 +46,16 @@ That quantity is exactly computable only when every candidate is evaluated on ea
 
 ### 3.1 Off-policy evaluation
 
-If a logging policy selected $M_i^{\mathrm{sel}}$ with known propensity $p_i=\pi_0(M_i^{\mathrm{sel}}\mid\mathbf f_i,\mathcal H_{i-1})$, the inverse-propensity estimator for a target history-dependent policy $\pi$ is
+If logging router $\mu_{R,0}$ selected $M_i^{\mathrm{sel}}$ with known propensity $p_i=\mu_{R,0}(M_i^{\mathrm{sel}}\mid\mathbf f_i,\mathcal H_{i-1})$, the inverse-propensity estimator for target history-dependent router $\mu_R$ is
 
 $$
-\widehat V_{\mathrm{IPS}}(\pi)
+\widehat V_{\mathrm{IPS}}(\mu_R)
 =\frac{1}{N}\sum_{i=1}^{N}
-\frac{\pi(M_i^{\mathrm{sel}}\mid\mathbf f_i,\mathcal H_{i-1})}{p_i}
+\frac{\mu_R(M_i^{\mathrm{sel}}\mid\mathbf f_i,\mathcal H_{i-1})}{p_i}
 r_i(M_i^{\mathrm{sel}}).
 $$
 
-Both policies must condition on the same logged information set; equivalently, the full history may be absorbed into an augmented feature vector. This per-decision IPS estimator targets action substitution averaged over the logged history distribution. It does **not** identify the value of deploying $\pi$ when its earlier selections would change later histories, task availability, or feedback; that sequential estimand requires trajectory-level importance ratios or another longitudinal causal design, plus substantially stronger overlap assumptions. Small propensities create high variance and lack of overlap makes evaluation impossible. Doubly robust estimators combine propensity weighting with an outcome model and remain consistent if either component is correct under the corresponding contextual-bandit identification assumptions [DR]. Report task-cluster confidence intervals and effective sample size.
+Both routers must condition on the same logged information set; equivalently, the full history may be absorbed into an augmented feature vector. This per-decision IPS estimator targets action substitution averaged over the logged history distribution. It does **not** identify the value of deploying $\mu_R$ when its earlier selections would change later histories, task availability, or feedback; that sequential estimand requires trajectory-level importance ratios or another longitudinal causal design, plus substantially stronger overlap assumptions. Small propensities create high variance and lack of overlap makes evaluation impossible. Doubly robust estimators combine propensity weighting with an outcome model and remain consistent if either component is correct under the corresponding contextual-bandit identification assumptions [DR]. Report task-cluster confidence intervals and effective sample size.
 
 ## 4. What ACRouter establishes
 

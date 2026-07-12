@@ -33,30 +33,31 @@ Raw tool count is not the task's branching factor. Distinguish:
 $$
 B_t^{\mathrm{nominal}}
 \mathrel{=}
-|\mathcal A_t^{\mathrm{allowed}}|,
+|\mathcal A_t^{\mathrm{joint,allowed}}|,
 $$
 
 $$
 B_t^{\mathrm{viable}}
 \mathrel{=}
 \left|
-\{a\in\mathcal A_t^{\mathrm{allowed}}:
-\operatorname{preconditions}(a,s_t,\mathcal Q)\}
+\{\mathbf a\in\mathcal A_t^{\mathrm{joint,allowed}}:
+\operatorname{preconditions}(\mathbf a,s_t,\mathcal Q)\}
 \right|.
 $$
 
-$B_t^{\mathrm{viable}}$ is latent when $s_t$ is unknown, so an evaluator may estimate it from an oracle or annotated task graph. A policy-specific diagnostic is entropy-based effective branching, with $0\log 0$ defined as zero:
+$B_t^{\mathrm{viable}}$ is latent when $s_t$ is unknown, so an evaluator may estimate it from an oracle or annotated task graph. Using the canonical joint-action signature $\pi_{\mathrm{exec}}(\mathbf a\mid\mathbf c_t,\hat\tau_{0:t-1},\mathcal Q)$, a policy-specific diagnostic is entropy-based effective branching, with $0\log 0$ defined as zero:
 
 $$
 B_t^{\mathrm{effective}}
 \mathrel{=}
 \exp\!\left(
--\sum_{a\in\mathcal A_t}
-\pi(a\mid c_t)\log\pi(a\mid c_t)
+-\sum_{\mathbf a\in\mathcal A_t^{\mathrm{joint}}}
+\pi_{\mathrm{exec}}(\mathbf a\mid\mathbf c_t,\hat\tau_{0:t-1},\mathcal Q)
+\log\pi_{\mathrm{exec}}(\mathbf a\mid\mathbf c_t,\hat\tau_{0:t-1},\mathcal Q)
 \right).
 $$
 
-For a uniform policy over $b$ actions this equals $b$; for a concentrated policy it is smaller. In a regular depth-$n$ tree where every node at depth $t$ has the same branching $B_t$, the number of root-to-leaf action sequences is:
+For a uniform policy over $b$ joint actions this equals $b$; for a concentrated policy it is smaller. A single-agent system is the special case where each joint action contains one non-no-op component. In a regular depth-$n$ tree where every node at depth $t$ has the same branching $B_t$, the number of root-to-leaf action sequences is:
 
 $$
 N_{\mathrm{paths}}

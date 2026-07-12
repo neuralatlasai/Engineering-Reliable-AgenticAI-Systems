@@ -2,44 +2,55 @@
 
 ## 1. Problem and objective
 
-Topic 3's mapping table exposed an architectural split among production harnesses: some treat execution as a stream of *committed, typed events* from which all state derives; others treat it as *accumulated conversation* punctuated by API round trips. The split determines what the system can do after things go wrong — resume, replay, rewind, audit — and what it costs to do anything at all. The objective is a precise account of both architectures as the sources document them, the recovery/audit/cost trade space, and the decision rules — including the honest observation that the split is a spectrum, and the reference systems each occupy deliberate points on it.
+Topic 3 exposed two runtime emphases: an event-log-centered loop that commits declared state deltas at yield boundaries, and a conversation-centered tool loop exposed through typed messages. These are not mutually exclusive, and neither label alone guarantees replay, audit completeness, or transactionality. The objective is to separate documented mechanics from properties that require additional assumptions about durability, event completeness, reducers, external effects, and versioning.
 
 ## 2. Intuition first
 
-The difference is a bank ledger versus a checking-account balance. Request–response keeps the balance: current history in, next response out; the past exists only as whatever the running state retained. Event-sourcing keeps the ledger: every change is an appended, immutable record, and the balance is *derived* — recomputable from the ledger at any point, auditable line by line, rewindable to any moment. Ledgers cost more to maintain and are the only structure that answers "how did we get here?" after a crash, a dispute, or an incident. For agents — systems whose most important component confabulates how it got here — the value of the ledger should be obvious.
+A ledger analogy is useful only with its assumptions visible. If events are durable, ordered, complete for the state being reconstructed, and interpreted by a versioned deterministic reducer, a projection can be rebuilt. If tool side effects bypass the log, events are mutable, or reducer semantics change, the “ledger” cannot reconstruct reality. Conversation-centered systems can still retain a separate append-only audit stream. The architectural question is therefore which state is authoritative and what evidence is sufficient for recovery—not whether a message stream happens to look event-like.
 
 ## 3. The two architectures, as shipped
 
-### 3.1 Event-sourced: the ADK Runner
+### 3.1 Event-log-centered: the documented ADK Runner
 
 The documented mechanics [ADK]:
 
-- **Everything is an event.** Execution logic "constructs an Event containing content and actions, then yields back to Runner"; events are "atomic message[s] carrying content and side-effects (`actions`)."
-- **State is a derived view.** Changes travel as `event.actions.state_delta` / `artifact_delta`; the Runner "uses configured Services to commit changes" (`SessionService.append_event()`); the Session holds "complete event history, enabling state reconstruction, session rewinding, and observability."
+- **Execution communicates through events.** Execution logic constructs an `Event` containing content and actions and yields it to the Runner [ADK]. This does not imply that every external side effect is captured by an event.
+- **Declared session-state changes travel with events.** `state_delta` and related actions are processed through configured services; session history can support state reconstruction and rewinding [ADK]. The documentation does not establish classical event-sourcing properties for every service implementation.
 - **Commit-before-continue.** Execution pauses at each yield; "only after the Runner processes and commits the event does execution continue," so resumed code "can reliably assume that the state changes signaled in the yielded event have been committed."
 - **The documented caveat:** within an invocation, "dirty reads" of uncommitted local state are possible — enabling multi-step coordination before a yield, at the risk that "the invocation fails before state-carrying events are processed" [ADK].
 - **Streaming is layered on, not confused with, commitment:** partial events (`partial=True`) are forwarded for UI but skip actions processing; only final events commit [ADK] — display and durability as separate channels.
 
-### 3.2 Request–response with a typed stream: the Claude Agent SDK
+### 3.2 Conversation-centered tool loop with a typed stream: Claude Agent SDK
 
-The SDK yields a typed message stream — `SystemMessage(init)`, `AssistantMessage`, `UserMessage` (tool results), `StreamEvent`, `ResultMessage` with cost/usage/session ID [CAL] — which *looks* event-like, and the session is resumable and forkable by ID, with "full context from previous turns... restored" [CAL]. But the architecture differs at the state layer: conversation history *is* the primary state, growing until compaction *summarizes it in place* — a lossy, in-band mutation of the record ("compaction replaces older messages with a summary, so specific instructions from early in the conversation may not be preserved" [CAL]). The stream reports; it does not constitute. Recovery is resume-from-retained-state, not recompute-from-ledger.
+The current SDK documentation exposes typed messages including `SystemMessage`, `AssistantMessage`, `UserMessage`, `StreamEvent`, and `ResultMessage`, and documents session resumption plus automatic compaction [CAL]. Compaction replaces older model-visible history with a summary and may lose specific early instructions [CAL]. These facts characterize model-facing state and stream semantics; they do not prove that no separate durable event store exists in a deployment. Recovery claims must be scoped to the storage the application actually retains.
 
 ### 3.3 The spectrum, honestly
 
-Neither system is a pure pole. ADK permits dirty reads inside invocations (a request–response island within the ledger); the SDK's hooks can archive full transcripts pre-compaction (`PreCompact` [CAL]) — a builder-supplied ledger bolted to the balance architecture. And the evaluation literature's demand sits above both: the transcript as "complete record including outputs, tool calls, reasoning, intermediate results" [DEM], and deep telemetry recording "prompts and retrieved context, token usage and cost... sandbox snapshots, command outputs... branch decisions, rejected alternatives, human interventions" [CAH §3.5.1]. That demand is an event-sourcing requirement *whatever the runtime architecture* — if the loop doesn't ledger natively, the telemetry layer must.
+Neither system is a pure pole. ADK documents dirty-read windows inside an invocation; the Claude Agent SDK exposes `PreCompact`, which can archive a transcript before model-visible compaction [ADK; CAL]. Evaluation guidance asks for a complete trial transcript and outcome evidence [DEM; CAH §3.5.1]. That is an observability requirement, not necessarily an event-sourced runtime requirement: an audit log may be append-only without being the authoritative source of runtime state.
+
+### 3.4 Formal recovery condition
+
+Let $e_1,\ldots,e_n$ be committed events for a particular harness projection and let $z_0$ be its initial state. A rebuild is defined by a versioned reducer $F_v$:
+
+$$
+\widehat z_n
+=\operatorname{fold}(F_v,z_0,e_{1:n}).
+$$
+
+The equality $\widehat z_n=z_n$ is justified only if the log is complete and ordered for that projection, $F_v$ matches the version that produced the events, and external effects are either represented by authoritative receipts or reconciled separately. Rebuilding $\widehat z_n$ reconstructs observable harness state; it does not reconstruct latent trajectory $\tau^\star$ or rerun stochastic $\pi_M$ identically. **[derived]**
 
 ## 4. The trade space
 
 | Property | Event-sourced | Request–response |
 |---|---|---|
-| Crash recovery | Recompute from committed log; resume from last commit [ADK] | Resume from retained session state; anything uncommitted is gone |
-| Replay/debugging | Native: re-derive any intermediate state | Requires separately archived transcripts [CAL PreCompact] |
-| Audit | The log *is* the audit record | Reconstructed from telemetry, if built [CAH §3.5.1] |
+| Crash recovery | Rebuild declared session projections from durable committed events; external effects still require reconciliation [ADK] | Resume from whatever session/checkpoint state the application retained |
+| Replay/debugging | Re-derive projections when reducer and event versions are available; model/environment replay is separate | Requires retained messages, checkpoints, and environment evidence [CAL] |
+| Audit | Event history contributes evidence; completeness and immutability must be established | A separate telemetry/audit stream can provide equivalent evidence [CAH §3.5.1] |
 | Rewind/fork | "Session rewinding" native [ADK] | Fork-from-session supported [CAL]; rewind limited by compaction loss |
 | Long-run state fidelity | Log grows; views stay exact | Compaction trades fidelity for context budget [CAL] |
-| Write amplification / latency | Commit per yield — every step pays persistence | Persistence at session boundaries; cheaper per step |
+| Write amplification / latency | Persistence on processed non-partial events in the documented loop | Deployment-specific; typed streaming does not specify durability frequency |
 | Implementation weight | Runner + services + event schema | Thin loop over the model API |
-| Failure-atomicity clarity | Explicit (committed vs. not; dirty-read window named) [ADK] | Implicit; the hazard exists unnamed |
+| Failure-atomicity clarity | Session-state commit boundary and dirty-read window are documented [ADK] | Must be defined by the application's checkpoint and effect ledger |
 
 **[derived — table ours; cells sourced]**
 
@@ -54,7 +65,7 @@ Neither system is a pure pole. ADK permits dirty reads inside invocations (a req
 
 **Request–response earns its keep when:** runs are short-lived and disposable; the deliverable is the artifact, not the process; latency and implementation weight dominate; and a telemetry layer covers the audit demand independently. Interactive coding sessions — the SDK's home workload [CAL] — are exactly this shape, which is why the architecture is not a mistake but a fit.
 
-**The hybrid rule that usually wins:** run the loop however the substrate prefers; **ledger the evidence regardless.** The [DEM]/[CAH §3.5.1] telemetry demand is architecture-independent, and meeting it converts most of the event-sourced column's benefits into properties of your observability layer rather than your runtime. What the hybrid cannot recover is commit-before-continue's *resumption guarantee* — that remains a runtime property, and workloads needing it (rule 1) need the real thing.
+**Hybrid rule:** run the loop using the substrate's supported control semantics, but retain the evidence required by the workload. An observability ledger can support audit and diagnosis; it cannot by itself provide commit-before-continue, exactly-once effects, or state reconstruction. Those remain runtime and tool-contract properties.
 
 ## 6. Failure modes
 
@@ -92,4 +103,4 @@ Neither system is a pure pole. ADK permits dirty reads inside invocations (a req
 [HX] HarnessX, arXiv:2606.14249 (`Knowledge_source/2606.14249v2.pdf`) §4.3
 [DEM] Anthropic, Demystifying evals for AI agents — https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
 [HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.3
-[CDX] OpenAI Codex documentation — https://learn.chatgpt.com/docs/sandboxing
+[CDX] OpenAI Codex documentation, agent approvals and security — https://learn.chatgpt.com/docs/agent-approvals-security
