@@ -6,7 +6,7 @@
 
 ## 1. Why this chapter opens with an attribution correction
 
-Chapters 1 and 2 established two facts that most agent engineering still ignores. First: the harness moves outcomes as much as the model — a 23.8-point aggregate-score spread across harnesses at a fixed model pool [HB §4.2], +14.5% average improvement (up to +44.0%) from harness changes alone with weights frozen [HX abstract]. Second: the model substrate ships with documented failure mechanisms — false completion claims, premature stops on unverbalized internal states, grader-optimized behavior [FSC §6.3.5, §6.4.1.4, §6.4.2] — that no prompt fixes.
+Chapters 1 and 2 established two facts that most agent engineering still ignores. First: the harness materially changes measured performance — a 23.8-point harness-aggregated score spread under a fixed model pool and task suite (a configuration-level contrast, not a per-model causal effect) [HB §4.1–4.2], and +14.5% average improvement (up to +44.0%) on the reported benchmark suite from harness changes alone with model weights frozen [HX abstract]. Second: the model substrate ships with documented failure mechanisms — false completion claims, premature stops on unverbalized internal states, grader-optimized behavior [FSC §6.3.5, §6.4.1.4, §6.4.2] — that no prompt fixes.
 
 This chapter draws the engineering conclusion: **the harness is not glue code. It is the control plane of a distributed system whose most important component is stochastic**, and it deserves the same design discipline as any control plane — explicit state machines, typed events, deterministic invariants, budget enforcement, replayable execution, and its own experimental methodology.
 
@@ -34,6 +34,9 @@ Chapters 1–2 in full. This chapter leans hardest on: the three-layer policy st
 | **Commit-before-continue** | Execution pauses at each yielded event until the runtime persists its state changes; resumed code "can reliably assume that the state changes signaled in the yielded event have been committed" | [ADK] |
 | **Deep telemetry** | Structured traces connecting model decisions, harness actions, environment states, and outcomes — beyond final answers | [CAH §3.5.1] |
 | **Evaluation harness** | Infrastructure running evals end-to-end: provides tools, records steps, grades outputs, aggregates results | [DEM] |
+| **Typed harness stages** | $\operatorname{Assemble}\to Y_t\sim\pi_{M_c}\to\operatorname{Parse}(\Xi_t)\to\operatorname{Admit}(\widetilde A_t)\to\operatorname{ScheduleExec}(A_t)$ — proposal, candidate set, admitted set, and executed actions are distinct typed objects | Ch. 1, Topic 12 §3.3 |
+| **Terminal-control status** | $\kappa_t\in\{\mathrm{continue},\mathrm{success},\mathrm{model\_stop},\mathrm{budget},\mathrm{timeout},\mathrm{execution\_error},\mathrm{policy\_block}\}$, evaluated after each decision event; provider subtypes may refine it | Ch. 1, Topic 12 §3.3 |
+| **Observable trace $\hat\tau$** | The persisted run record — requests, proposals, candidate/admitted/executed actions, tool results, $\kappa$ history, usage, workspace snapshots, validator outputs — as distinct from the unrecoverable latent trajectory $\tau^\star$ | Ch. 1, Topic 12 §4; [HB §3.3] |
 
 ## 5. System boundary
 
@@ -67,6 +70,8 @@ All previous tags remain. New:
 | [CAH] | Code as Agent Harness — now including §3.3.4 (workflow-orchestration tool use), §3.4 (PEV loop), §3.5 (AHE, deep telemetry, Evolution Agent, governed mutation) | `2605.18747v1.pdf` |
 
 **Access note, stated plainly:** the README's first anchor for this chapter — OpenAI's "Unrolling the Codex agent loop" (openai.com/index/unrolling-the-codex-agent-loop/) — returned HTTP 403 at retrieval time and could not be read. Codex-side claims in this chapter are grounded in the official Codex documentation [CDX] reachable from `source.md`'s Codex link instead, and are correspondingly narrower (sandbox and approval semantics, not the vendor's loop narrative). No claim in this chapter is attributed to the inaccessible post.
+
+**Notation and statistics contract:** this chapter is bound by Chapter 1, Topic 12 — the typed-stage notation ($C_t$, $Y_t$, $\Xi_t$, $\widetilde A_t$, $A_t$, $\kappa_t$, $\hat\tau$), the configuration tuple $c=(M_c,H_c,D_c,\nu_c,B_c,P_c,\mathcal U_c,J_c)$, and the reporting rules (paired designs, task-clustered uncertainty, vector-valued evaluation). The contract explicitly assigns this chapter its role: "Chapter 3 decomposes the typed harness stages." Engineering syntheses beyond quoted sources are flagged **[derived]** or **[synthesis]** with assumptions stated.
 
 ## 9. Chapter map
 

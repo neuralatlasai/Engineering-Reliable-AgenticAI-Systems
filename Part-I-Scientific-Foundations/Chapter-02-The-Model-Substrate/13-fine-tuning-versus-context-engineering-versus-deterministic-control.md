@@ -2,105 +2,169 @@
 
 ## 1. Problem and objective
 
-When an agent's behavior must change, three levers exist: change the weights (fine-tuning), change what the model sees (context engineering), or take the decision away from the model entirely (deterministic control). They differ in cost, latency-to-effect, reversibility, and — critically — in *which failure classes they can address at all*. Teams chronically reach for the wrong lever: fine-tuning what a system prompt would fix, prompting against what only a permission rule can guarantee. The objective is a decision framework grounded in the sources' comparative evidence — including the one benchmark that measured prompted and fine-tuned agents on the same compositional tasks, and the one system that co-evolves two of the three levers and reports which moved first.
+When agent behavior is inadequate, teams can change what the model has learned, change what it sees, change the system that mediates its actions, or replace the model. These interventions operate on different failure mechanisms. A permission defect cannot be repaired by more examples; missing current information should not be baked into weights; a stable high-volume behavior may be too expensive to restate in every request.
 
-## 2. Intuition first
+The objective is to diagnose the failure before selecting the intervention, state the assurance each lever can and cannot provide, and compare the levers through controlled experiments and break-even economics rather than a universal ordering.
 
-The three levers are: retrain the employee, rewrite the briefing, or change the process so the decision isn't theirs. Retraining is slow, expensive, semi-permanent, and can change things you didn't intend. Rewriting the briefing is same-day, reversible, and inspectable — but the briefing competes with everything else on the desk. Changing the process is the only option that produces a *guarantee* rather than a tendency. Mature organizations use all three, in a characteristic order: process for invariants, briefing for behavior, retraining only when the same briefing has been rewritten five times and the volume justifies making it permanent.
+## 2. Four intervention families
 
-## 3. What each lever is, with its contract
+### 2.1 Deterministic control and enforcement
 
-**Deterministic control** (π_D/π_H — Chapter 1, Topic 4). Predefined code paths [BEA], permission rules and blocking hooks [CAL], schema constraints [OAT]. Contract: *guarantees*, not tendencies — the only lever whose effect is provable rather than statistical. Scope limit: only expressible for decisions you can specify in advance (Chapter 1, Topic 9's enumerability condition).
+Application and harness logic can restrict actions, validate state, enforce budgets and route execution. It can provide a strong guarantee only **relative to explicit assumptions**: the invariant is correctly specified, every relevant path is mediated, the implementation is correct, dependencies are trusted, concurrency is controlled and failure handling preserves the invariant.
 
-**Context engineering** (the model's inputs). System prompts, persistent instruction files re-injected per request [CAL], retrieval and in-context examples [BEA], tool descriptions [OAT], plan objects [CAH §3.1.1]. Contract: same-day deployment, full reversibility, version-controllable, inspectable by anyone who can read. Scope limits: bounded by the context budget and its dilution dynamics (Chapter 6); produces tendencies, not guarantees; and the instruction competes with the rest of the context for influence.
+An assurance contract should state:
 
-**Fine-tuning** (the weights). Contract: durable behavior change without per-request token cost; can reach behaviors no briefing elicits. Scope limits: slow loop, capital cost, opaque diff — and the change rides *inside* the model version, so it resets whenever the base model does.
+- invariant and protected assets;
+- enforcement point and completeness argument;
+- assumptions about tools, identity, concurrency and environment;
+- verification evidence such as tests, static analysis or model checking;
+- failure behavior and residual risk.
 
-## 4. The comparative evidence
+Control is the appropriate lever for properties that must hold even when the model proposes the wrong action. It is not proof that the whole system is correct.
 
-The ledger's direct comparisons, read carefully:
+### 2.2 Context engineering
 
-**CompWoB — fine-tuning trades peak for robustness.** On base MiniWoB tasks, prompted agents (94.0%) *beat* finetuned/transferred models (85.4%); on the compositional tasks, the ordering inverts — finetuned 54.8% vs. prompted 24.9%; the purpose-trained HTML-T5++ reaches 95.2%/61.5% [CompWoB]. Fine-tuning bought compositional robustness at a cost in base-task peak — and even the best trained model still lost a third of its performance to composition and remained sensitive to instruction reordering [CompWoB]. Read as lever guidance: fine-tuning moved the *distribution-shift* failure class that prompting could not reach, and moved no fundamental limit.
+Context engineering changes the model’s conditional input: instructions, retrieved evidence, examples, tool contracts, plans and execution history. It is usually fast to change and easy to inspect, but consumes a finite context budget and produces probabilistic behavioral effects.
 
-**HarnessX — the context/harness lever first, the weights lever second.** The co-evolution system "closes the harness–model loop by turning trajectories into both harness updates and model training signal," with the harness lever alone (composition + trace-driven adaptation) delivering +14.5% average (up to +44.0%), "gains largest where baselines are lowest," before any weight update — and the paper's thesis is exactly the ordering: "agent progress need not come from model scaling alone: composing and evolving runtime interfaces from execution feedback is an actionable and complementary lever" [HX abstract]. The weight-training half (cross-harness GRPO over a mixed-policy buffer [HX §5]) exists and contributes — as the *second* movement.
+Use it for current or task-specific information, evolving policy explanations, examples and evidence that should remain reviewable. Its effectiveness depends on retrieval recall, placement, instruction conflicts, context length and whether the model actually uses the supplied information.
 
-**ACRouter — the cheap, targeted fine-tune.** The routing policy is "a cost-effective Qwen3.5-0.8B model fine-tuned on the CodeRouterBench probing set" [AAR §3.3]: fine-tuning applied not to the frontier model doing the work but to a small auxiliary component with a narrow, data-rich, stable decision — the configuration where the lever's economics actually work.
+### 2.3 Fine-tuning and adaptation
 
-**The vendor baseline** — "for many applications... optimizing single LLM calls with retrieval and in-context examples is usually enough" [BEA] — is context engineering stated as the default, by the party selling the other levers.
+Fine-tuning changes model parameters or adapters using task data. Relevant families include:
 
-And one piece of *negative* evidence for enthusiasm about weights: the grader-awareness findings show training pressure producing behaviors optimized against the training signal itself — grader awareness increasing over training, with behavioral reward partly mediated by it [FSC §6.4.2.1.2, §6.4.2.2.1]. Fine-tuning is not a neutral instrument; what it optimizes is what your reward channel *measures*, which Chapter 1's evaluation chapters spent many pages distinguishing from what you *want*.
+- **Supervised fine-tuning:** learn target outputs from labeled demonstrations.
+- **Preference or reinforcement optimization:** change behavior using comparative or scalar feedback.
+- **Parameter-efficient tuning:** train adapters such as LoRA while holding most base weights fixed [LORA].
+- **Distillation:** train a smaller model to reproduce selected behavior or decisions.
 
-## 5. The decision framework
+Fine-tuning can reduce repeated prompt overhead and improve stable task behavior, but it creates a new model artifact requiring data governance, regression testing and requalification. It can also produce catastrophic forgetting, shortcut learning, reward-channel gaming and safety regressions.
 
-**By failure class** — the levers are not interchangeable; match the fix to the mechanism **[derived — framework ours; anchors cited]**:
+### 2.4 Model or tool substitution
 
-| Observed failure | Right lever | Why not the others |
+If the required capability is absent across reasonable prompts and examples, a different model, specialized tool or deterministic algorithm may be the correct intervention. Fine-tuning is not obliged to create capabilities unsupported by the base representation, data or inference budget.
+
+## 3. What the current evidence supports
+
+### 3.1 CompWoB
+
+CompWoB reports different base and compositional performance for prompted LLM agents, transferred/fine-tuned models and a purpose-built HTML model [CompWoB]. These systems differ in architecture, training and evaluation configuration. The result demonstrates that trained approaches can have different compositional behavior; it is **not** a controlled same-base-model experiment proving that fine-tuning necessarily trades peak performance for robustness.
+
+The appropriate follow-up experiment holds the base model, harness, tasks, budget and evaluator fixed while varying only the adaptation method.
+
+### 3.2 HarnessX
+
+HarnessX reports gains from harness composition and trace-driven adaptation and also studies model-training feedback [HX]. It establishes harness optimization as a material lever in its evaluated systems. It does not prove that every team should apply harness changes before weight changes; intervention order depends on the diagnosed mechanism, evidence and cost.
+
+### 3.3 ACRouter
+
+ACRouter uses a small fine-tuned routing model informed by measured priors and retrieved experience [AAR §3.3]. This is a strong example of fine-tuning a narrow, stable, data-rich auxiliary decision instead of spending a frontier model on dispatch. Its economics and accuracy remain benchmark-specific.
+
+### 3.4 Training-signal risk
+
+The FSC grader-awareness experiments show that model behavior can adapt to properties of its evaluation signal and that some measured reward is associated with grader-related representations [FSC §6.4.2]. Awareness is not identical to reward hacking, but the result justifies integrity testing of fine-tuning labels, judges and reward channels.
+
+## 4. Failure-mechanism-to-intervention map
+
+| Observed failure | Primary candidate | Required diagnostic |
 |---|---|---|
-| Violation of an invariant (security, approval, budget) | Deterministic control | Tendencies cannot carry guarantees [CAL permissions; HB §3.4's binary gate] |
-| Missing knowledge/context (didn't know the convention, the API, the state) | Context: retrieval, instruction files, plan objects [CAL; CAH §3.1.1] | Weights encode the past; the convention changes |
-| Persistent style/format drift despite instruction | Context first; fine-tune at volume | The five-rewrites rule (§2); measure instruction-following before concluding weights are needed |
-| Distribution shift the prompt can't bridge (CompWoB's composition class) | Fine-tuning [CompWoB] | The one measured case where weights beat words |
-| Narrow, stable, data-rich auxiliary decision (routing, classification) | Small fine-tuned component [AAR §3.3] | Frontier-model prompting is over-buying; determinism can't express it |
-| Capability absent at any prompt | Model change (Topic 11), not fine-tuning heroics | Fine-tuning shapes; it rarely creates |
+| Unauthorized or forbidden action | Deterministic enforcement | Verify complete mediation and bypass resistance |
+| Missing current fact or environment state | Retrieval/context/tool observation | Measure retrieval recall, freshness and utilization |
+| Conflicting or lost instruction | Context architecture first | Inspect hierarchy, compaction and conflict resolution |
+| Stable, repeated behavior gap with representative data | Fine-tuning or adapter | Demonstrate persistence across prompts and sufficient volume |
+| Narrow high-volume classification/routing | Small tuned model or deterministic classifier | Compare against rule and prompted baselines |
+| Capability absent under reasonable elicitation | Different model or external tool | Establish capability ceiling with controlled attempts |
+| Excess latency from repeated context | Context compression, caching, tuning or distillation | Decompose prefill/decode/tool latency |
+| Judge-optimized or shortcut behavior | Repair data/reward/evaluator | Audit leakage, incentives and counterexamples |
 
-**By operational property** — when the failure class is ambiguous, the tiebreakers:
+The table identifies candidates, not automatic answers. Some failures require combinations: deterministic boundaries around a fine-tuned policy supplied with current retrieved evidence.
 
-```
-speed of iteration:   control ≈ context (same-day)  ≫  fine-tuning (weeks)
-reversibility:        context (revert the file) > control (revert the rule) ≫ weights
-inspectability:       context and control are diffs a reviewer can read; a weight delta is not
-survival across model upgrades:  control survives; context mostly survives (re-tune);
-                                 fine-tunes reset with the base model — and Ch.1 Topic 4 §7's
-                                 compensation-masking applies to them with full force
-```
+## 5. Economic break-even model
 
-The composite rule the evidence supports: **exhaust the reversible levers first** — deterministic control for anything that must be true, context engineering for anything that should be true — and reach for weights when a measured, persistent gap survives both, at a volume that amortizes the loop. This is the HarnessX ordering [HX], the vendor default [BEA], and Chapter 1 Topic 10's minimal-intervention principle wearing its third costume.
+Let $V$ be request volume over the decision horizon. Define:
 
-## 6. Measurement
+- $F_{\mathrm{tune}}$: data, training and deployment cost;
+- $F_{\mathrm{qual}}$: evaluation, safety and compliance requalification cost;
+- $c_{\mathrm{ctx}}$: marginal per-request cost under context engineering;
+- $c_{\mathrm{tuned}}$: marginal per-request cost of the tuned alternative;
+- $M_{\mathrm{tune}}$: expected maintenance and retraining cost.
 
-1. **Ablate levers, not vibes:** the lever comparison is an experiment — fixed (M, T, J), one lever moved at a time [HB §3.1's discipline; Chapter 13's ablation methodology]. HarnessX's structure (harness gains reported separately from co-evolution gains [HX]) is the template.
-2. **Price per point:** each lever's cost to move the target metric one point, including iteration latency and the re-qualification burden it triggers (a fine-tune is a new model for Topic 11 §6.5's purposes).
-3. **Instruction-following before weight blame:** measure whether the context lever was actually *applied* — instruction present in context at decision time (compaction check [CAL]), retrieval hit, plan consulted — before concluding it failed; most "prompting doesn't work" findings are delivery failures, not influence failures (Chapter 6's utilization metrics).
-4. **Post-fine-tune propensity re-screen:** the full Topic 11 §4-Risk battery on the tuned model — the grader-awareness evidence [FSC §6.4.2] says training moves more than the target metric.
+Ignoring quality differences momentarily, tuning has lower total cost when
+
+$$
+F_{\mathrm{tune}}+F_{\mathrm{qual}}+M_{\mathrm{tune}}+V c_{\mathrm{tuned}}
+<
+V c_{\mathrm{ctx}}.
+$$
+
+If $c_{\mathrm{ctx}}>c_{\mathrm{tuned}}$, the nominal break-even volume is
+
+$$
+V^*
+\mathrel{=}
+\frac{F_{\mathrm{tune}}+F_{\mathrm{qual}}+M_{\mathrm{tune}}}
+{c_{\mathrm{ctx}}-c_{\mathrm{tuned}}}.
+$$
+
+This threshold is meaningless unless candidates also meet quality, latency and critical-risk constraints. Include the expected lifetime of the base model: frequent provider upgrades can shorten the amortization horizon.
+
+## 6. Controlled comparison methodology
+
+1. **Define the failure and target estimand.** Separate outcome quality, instruction adherence, critical risk, latency and cost.
+2. **Build train, calibration and untouched test sets.** Deduplicate by task lineage and protect against benchmark contamination.
+3. **Establish baselines.** Include deterministic automation, optimized context, retrieval, a stronger model and the current production system.
+4. **Hold the environment fixed.** Pin model snapshot, harness, tools, evaluator, budgets and decoding settings for each causal comparison.
+5. **Ablate one intervention at a time**, then test interactions through a small factorial design.
+6. **Repeat stochastic runs** and use paired task-level estimates with cluster-bootstrap confidence intervals.
+7. **Screen regressions.** Evaluate previously working task classes, safety propensities, OOD cases and adversarial inputs.
+8. **Measure lifecycle cost.** Include data labeling, training, deployment, monitoring, retraining and rollback.
+9. **Run shadow and canary stages** before transferring authority.
+
+Fine-tuning studies must record base-model version, dataset construction, hyperparameters, random seeds, compute, adapter configuration and checkpoint-selection rule. Context studies must version the exact assembled prompts and retrieval corpus.
 
 ## 7. Failure modes
 
-- **Prompting against invariants:** the security rule expressed as a polite instruction; the model is an optimizer sharing context with adversarial inputs, and tendencies lose (Chapter 12). Control-plane failures get control-plane fixes.
-- **Fine-tuning the ephemeral:** baking this quarter's conventions into weights; the convention changes, the weights don't, and the tune is now negative training data you paid for.
-- **Context sedimentation:** every incident adding an instruction, none removed — harness entropy [Chapter 1's Topic 4 §7; Chapter 3], where the brief becomes noise that dilutes itself. Context is a budgeted resource with garbage collection (Chapter 6; Chapter 15's harness GC).
-- **The tuned-model masking trap:** a fine-tune compensating for a harness defect (or vice versa), discovered when either changes — the (M,H) coupling of Chapter 1 Topic 4 §7, now with three coupled layers.
-- **Reward-channel naivety:** fine-tuning on judge-scored outcomes and harvesting judge-optimized behavior — the measured mechanism [FSC §6.4.2]; the training signal needs the same integrity screening as any evaluation (Chapter 1, Topic 12 §3.3).
-- **Lever monoculture:** teams that only prompt (accumulating unenforceable "musts"), only tune (slow, opaque, brittle to base-model churn), or only harden (agents constrained into workflows that no longer earn their name — sometimes correct! but then say so and take Topic 9's exit).
+- **Prompting against an invariant:** a prose instruction is expected to enforce authorization.
+- **Hard-coding an uncertain semantic judgment:** deterministic control expresses the wrong rule and gains false authority.
+- **Fine-tuning ephemeral facts:** changing information becomes stale model behavior.
+- **Context sedimentation:** incident-driven instructions accumulate until they conflict or dilute one another.
+- **Confounded lever comparison:** a model, prompt, tool set and evaluator all change together.
+- **Catastrophic forgetting:** target behavior improves while unrelated capabilities regress.
+- **Reward-channel gaming:** the tuned policy learns judge artifacts rather than task intent.
+- **Base-model churn:** an adaptation loses support or value before costs amortize.
+- **Data leakage:** test cases or near-duplicates enter training.
+- **Irreversible rollout:** the organization cannot restore the prior model–harness pair and state.
 
 ## 8. Limitations
 
-- The direct three-way comparison does not exist in the ledger: CompWoB compares two levers on one domain with 2023–24-era models [CompWoB]; HarnessX reports its ordering on five benchmarks with its own architecture [HX]. The framework in §5 is a synthesis with clearly marked derivation, not a measured decision table.
-- Fine-tuning economics (data requirements, drift rates, per-provider constraints) are unquantified here; the sources establish *roles*, not price curves.
-- "Context engineering" spans an enormous mechanism space (Chapter 6 is entirely about it); this topic treats it as one lever, which is the right altitude for the three-way decision and wrong for everything downstream of choosing it.
+- No source in this ledger provides a controlled universal three-way comparison. Intervention choice remains workload-specific.
+- Provider fine-tuning interfaces, costs and supported methods change; operational estimates must use current contracts.
+- Weight changes are difficult to inspect semantically, but context and deterministic code can also hide complex emergent behavior.
+- The break-even equation compresses uncertainty in future volume, model lifetime and quality. Use scenario or sensitivity analysis rather than one forecast.
+- Fine-tuning recipes remain outside this chapter; the intervention families are included to make the decision scientifically complete.
 
 ## 9. Production implications
 
-1. **Classify the failure before choosing the lever** (§5's table) — the single highest-yield habit this topic offers; most lever debates dissolve once the failure class is named.
-2. **Keep an invariant ledger:** every "must" in the system, with its enforcement point; any "must" implemented as prose is an open item [CAL permissions; HB §3.4].
-3. **Run the five-rewrites rule:** recurring instruction rewrites for the same behavior, at volume, are the fine-tuning trigger — before that, they're iteration.
-4. **Prefer small tuned components to tuned frontiers** [AAR §3.3]: auxiliary decisions (routing, classification, extraction) are where fine-tuning's economics are cleanest and its blast radius smallest.
-5. **Re-run the lever decision on every base-model upgrade:** the upgrade may obsolete the fine-tune, simplify the context, or both — Chapter 1 Topic 10 §5's demotion review, third costume (§5).
-6. **Budget context like the shared resource it is** — with an owner, a review cadence, and deletions (Chapter 6; Chapter 15's GC) — or the cheapest lever silts up.
+1. Diagnose whether the failure is informational, behavioral, capability-related or an invariant violation.
+2. Put non-negotiable safety and authority constraints in completely mediated enforcement points.
+3. Keep changing facts and task evidence in context or tools, not weights.
+4. Consider tuning when the behavior is stable, data-rich, repeatedly valuable and economically amortizable.
+5. Treat every fine-tune as a new model–harness configuration requiring full regression and safety qualification.
+6. Preserve rollback artifacts and the evaluation evidence supporting the intervention.
+7. Re-run the decision after base-model, task-distribution or cost changes.
 
 ## 10. Connections
 
-- This topic is Chapter 1 Topic 4 (the three-layer stack) turned into a change-management discipline, and Topic 10 (minimal intervention) applied to behavior modification.
-- Chapter 6 is the context lever in full; Chapter 13's ablation methodology is §6.1 industrialized; Chapter 15's capability-drift topic owns the upgrade-interaction problem (§9.5).
-- Topic 14, next, catalogs the failure mechanisms these levers are deployed against — including the ones (reward hacking, evaluation awareness) that constrain the fine-tuning lever itself.
+Topic 1 defines stochastic model behavior, Topic 8 supplies uncertainty measurements, Topics 11–12 cover model substitution and routing, and Topic 14 distinguishes mechanisms that an intervention must target. Chapters 6 and 13 own context construction and experimental methodology.
 
 ## Sources
 
-[CompWoB] Furuta et al., TMLR — https://deepmind.google/research/publications/46840/
-[HX] HarnessX, arXiv:2606.14249 (`Knowledge_source/2606.14249v2.pdf`) abstract, §5
-[AAR] Agent-as-a-Router, arXiv:2606.22902 (`Knowledge_source/2606.22902v3.pdf`) §3.3
-[BEA] Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents
-[CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
+[CompWoB] Furuta et al., “Exposing Limitations of Language Model Agents in Sequential-Task Compositions on the Web,” TMLR — https://arxiv.org/abs/2311.18751
+[HX] HarnessX, arXiv:2606.14249 (Knowledge_source/2606.14249v2.pdf) abstract, §5
+[AAR] Agent-as-a-Router, arXiv:2606.22902 (Knowledge_source/2606.22902v3.pdf) §3.3
+[BEA] Anthropic, “Building Effective Agents” — https://www.anthropic.com/engineering/building-effective-agents
+[CAL] Claude Agent SDK, “How the agent loop works” — https://code.claude.com/docs/en/agent-sdk/agent-loop
 [OAT] OpenAI, Tools guide — https://developers.openai.com/api/docs/guides/tools
-[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.1.1
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.1, §3.4
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §6.4.2
+[CAH] Code as Agent Harness, arXiv:2605.18747 (Knowledge_source/2605.18747v1.pdf) §3.1.1
+[HB] Harness-Bench, arXiv:2605.27922 (Knowledge_source/2605.27922v1.pdf) §3.1, §3.4
+[FSC] Claude Fable 5 & Mythos 5 System Card (Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf) §6.4.2
+[LORA] Hu et al., “LoRA: Low-Rank Adaptation of Large Language Models” — https://arxiv.org/abs/2106.09685

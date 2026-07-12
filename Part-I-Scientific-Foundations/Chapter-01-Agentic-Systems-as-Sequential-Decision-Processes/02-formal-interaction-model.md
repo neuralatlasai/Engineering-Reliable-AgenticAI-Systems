@@ -1,147 +1,248 @@
-# Topic 2 — Formal Interaction Model: Observation, Latent State, Action, Transition, Reward, Termination
+# Topic 2 — Formal Interaction Model: Observation, Latent State, Action, Transition, Objective, and Termination
 
 ## 1. Problem and objective
 
-Engineering discussions about agents stall because participants use words — "state," "step," "memory," "done" — that have no shared referent. The objective here is a single formal model, taken from the current literature rather than invented, that (a) covers single- and multi-agent systems, (b) maps one-to-one onto the events an actual SDK emits, and (c) is precise enough to support the reliability mathematics of Topics 7–8.
+Engineering discussions about agents stall because participants use words — "state," "step," "memory," "done" — that have no shared referent. The objective here is a constrained partially observable decision model that (a) covers single- and multi-agent execution, (b) distinguishes latent process variables from events an SDK can record, and (c) is precise enough to support the reliability mathematics of Topics 7–8.
 
-The formalization below is the one used by the agent-memory survey (arXiv:2512.13564, §2.1), chosen because it is explicitly designed to "encompass both single-agent and multi-agent configurations" and because it abstracts the model's internal reasoning honestly — as a policy, not a mind.
+The model combines standard POMDP state, transition, observation, policy, and belief semantics [POMDP] with the agent-memory survey's multi-agent and memory interfaces [MEM §2.1–2.2]. Safety and resource limits are represented as trajectory constraints in the constrained-MDP tradition [CMDP]. The synthesis is explicit because no single source supplies all three engineering views.
 
 ## 2. Intuition first
 
-Strip any agent run to its skeleton and you see a loop with four verbs: the world *is* in some state; the agent *sees* a slice of it; the agent *does* something; the world *changes*. Repeat until something says stop. Everything an agent system contains — prompts, tools, memory stores, budgets, judges — implements exactly one of those verbs or the stop condition. If you cannot say which one an artifact implements, you do not yet understand what it does to reliability.
+Strip an agent run to its skeleton and four operations remain: the world occupies a state; the system constructs a policy-visible view; a policy samples or selects an action; the world changes. Execution repeats until a completion rule, safety rule, or resource limit stops it. Prompts, tools, memory, schedulers, budgets, and evaluators can affect different boundaries; some components legitimately implement more than one function. Reliability analysis begins by naming those functions and their typed interfaces.
 
 ## 3. The formal model
 
-Let 𝓘 = {1, …, N} index the agents (N = 1 covers the single-agent case such as ReAct; N > 1 covers debate and planner–executor architectures). The environment has state space 𝒮. [MEM §2.1]
+Let $\mathcal I=\{1,\ldots,N\}$ index agents, $\mathcal S$ be the latent environment-state space, $\mathcal A_i$ agent $i$'s typed action space, and $\mathcal X_i$ its raw observation space. The task specification is $\mathcal Q$; the external environment instance is $\mathcal E$. A single-agent system has $N=1$. A multi-agent system must additionally specify whether actions are sequential, simultaneous, or asynchronously scheduled. [MEM §2.1]
 
-**Transition (latent state dynamics).** At each time step t the environment evolves by a controlled stochastic transition:
+### 3.1 Initial condition and latent transition
 
-```
-s_{t+1} ~ Ψ(s_{t+1} | s_t, a_t)
-```
+The task induces an initial-state distribution:
 
-where a_t is the action executed at t. In multi-agent systems this one abstraction covers both sequential decision-making and implicit coordination through environment-mediated effects. [MEM §2.1]
+$$
+s_0\sim\rho_0(\cdot\mid\mathcal Q,\mathcal E).
+$$
 
-**Observation.** Each agent i receives:
+At event index $t$, a scheduler $\sigma$ selects the active set $\mathcal I_t\subseteq\mathcal I$. The joint action $\mathbf a_t=(a_t^1,\ldots,a_t^N)$ assigns a distinguished no-op to inactive agents. The environment evolves according to:
 
-```
-o_t^i = O_i(s_t, h_t^i, 𝒬)
-```
+$$
+s_{t+1}\sim\Psi(\cdot\mid s_t,\mathbf a_t,\mathcal Q).
+$$
 
-where h_t^i is the portion of interaction history visible to agent i (previous messages, intermediate tool outputs, partial reasoning traces, shared workspace state, other agents' contributions — depending on system design), and 𝒬 is the task specification (user instruction, goal description, external constraints), treated as fixed within a task unless otherwise specified. [MEM §2.1]
+Sequential agent loops are the special case $|\mathcal I_t|=1$. Simultaneous or asynchronous systems require ordering and conflict semantics because a joint action cannot be reconstructed from an agent index alone. [POMDP; MEM §2.1]
 
-**Action.** The distinguishing feature of LLM-based agents is the *heterogeneity* of the action space. The survey's taxonomy [MEM §2.1]:
+### 3.2 Raw observation and policy-visible context
 
-1. **Natural-language generation** — reasoning, explanations, responses, instructions
-2. **Tool invocation** — external APIs, search engines, calculators, databases, simulators, code execution environments
-3. **Planning actions** — explicit task decompositions, execution plans, subgoal specifications that guide later behavior
-4. **Environment-control actions** — direct manipulation: navigation in embodied settings, editing a software repository, modifying a shared memory buffer
+Agent $i$ receives a stochastic raw observation:
+
+$$
+x_t^i\sim\Omega_i(\cdot\mid s_t,\mathbf a_{t-1},\mathcal Q).
+$$
+
+At initialization, define $\mathbf a_{-1}=\mathbf a_{\varnothing}$ as a distinguished no-op sentinel. This makes the $t=0$ boundary explicit without pretending that an environment action preceded initialization; an implementation may equivalently use a separate initial-observation kernel $\Omega_{i,0}(\cdot\mid s_0,\mathcal Q)$.
+
+The harness constructs policy-visible context from the raw observation, visible history $h_t^i$, and retrieved memory $m_t^i$:
+
+$$
+c_t^i=C_H^i(x_t^i,h_t^i,m_t^i,\mathcal Q).
+$$
+
+This separation is load-bearing. $\Omega_i$ describes what the environment or tool interface reveals; $C_H^i$ describes truncation, formatting, retrieval, compaction, and access control. If observation dynamics depend on environment-side history, the state must be augmented with the variables required to recover the Markov property. [POMDP; MEM §2.1–2.2]
+
+### 3.3 Sampled policy and heterogeneous actions
+
+For an active agent, the model samples a proposal rather than an already authorized environment action:
+
+$$
+y_t^i\sim\pi_{M_i}(\cdot\mid c_t^i,\mathcal Q).
+$$
+
+Writing a distribution rather than $y_t^i=\pi_{M_i}(\cdot)$ preserves sampling, provider-side nondeterminism, and randomized routing. A deterministic controller is the degenerate case with all probability mass on one proposal. The proposal may encode any of the following action families from [MEM §2.1]:
+
+1. **Natural-language generation** — explanations, proposals, responses, or instructions
+2. **Tool invocation** — APIs, search, calculators, databases, simulators, or code execution
+3. **Planning actions** — explicit decompositions, plans, or subgoal specifications
+4. **Environment-control actions** — workspace edits, navigation, or other state-changing operations
 5. **Communication actions** — structured messages to other agents
 
-All five are produced by the same autoregressive backbone conditioned on contextual input.
+These action types may be proposed by an autoregressive model, selected by deterministic application logic, or jointly mediated by both. A harness admits a proposal as $\widetilde{\mathbf a}_t$ and the dispatcher records the executed joint action $\mathbf a_t$; rejection, parse failure, and no-op remain explicit. The three objects must not be conflated.
 
-**Policy.** Each agent i follows:
+The model's internal deliberation remains abstracted inside $\pi_i$ [MEM §2.1]. Reliability contracts belong on observable inputs, proposed actions, admitted actions, effects, and externally checked outcomes; they need not assume that hidden reasoning is faithful or fully inspectable.
 
-```
-a_t = π_i(o_t^i, m_t^i, 𝒬)
-```
+### 3.4 Termination
 
-where m_t^i is a memory-derived signal (retrieved from a memory state 𝓜_t; Chapter 7 owns the details). The policy "may internally generate multi-step reasoning chains, latent deliberation, or scratchpad computations prior to emitting an executable action; such internal processes are abstracted away and not explicitly modeled." [MEM §2.1] That abstraction is deliberate and correct: internal reasoning is not observable state, and reliability engineering can only contract over observables.
+Let $\kappa_t$ be a typed termination decision:
 
-**Trajectory and termination.** A full execution induces:
+$$
+\kappa_t=\mathsf K(\hat\tau_{0:t},b_t^{\mathrm{rem}},v_t)
+\in
+\{\text{continue},\text{model-stop},\text{verified-success},
+\text{budget-stop},\text{safety-stop},\text{execution-error}\},
+$$
 
-```
-τ = (s_0, o_0, a_0, s_1, o_1, a_1, …, s_T)
-```
+where $b_t^{\mathrm{rem}}$ is remaining resource budget, $\hat\tau_{0:t}$ is the observable trace prefix, and $v_t$ is any typed environment or validator terminal signal available to the control plane. The decision is evaluated after the step-$t$ proposal has been adjudicated and any admitted action has executed; a terminal proposal with no environment effect records the distinguished no-op. The terminal index is:
 
-"where T is determined by task termination conditions or system-specific stopping criteria." [MEM §2.1] The trajectory interleaves (i) environment observation, (ii) optional memory retrieval, (iii) LLM-based computation, (iv) action execution driving the next state transition.
+$$
+T_{\mathrm{end}}=\inf\{t:\kappa_t\neq\text{continue}\}.
+$$
 
-**Reward / scoring.** Here the deployed-agent literature departs from classical RL, and honesty requires saying so plainly: **production agents generally have no runtime reward signal.** What exists instead is *post-hoc evaluation*. Harness-Bench formalizes it [HB §3.3–3.4]:
+Model-proposed completion and verified task success are distinct terminal causes. A model can emit no further tool call while an external validator rejects the result.
 
-```
-R = Run(M, H, E, T)          — a run of model M, harness H, environment E, task T
-TaskScore = Eval(R; J)       — an external judge J scores the completed run
+### 3.5 Latent trajectory versus observable trace
 
-TaskScore_i = Security_i · Completion_i · Process_i,   Security_i ∈ {0, 1}
-Process_i  = (Robustness_i + ToolUse_i + Consistency_i) / 3
-```
+The generative process induces a latent trajectory:
 
-The multiplicative form is intentionally conservative: "high aggregate credit requires task completion, no explicit security violation, and reliable execution behavior." [HB §3.4] Treat "reward" in agentic systems as this offline functional over trajectories, not as a per-step scalar the policy can see.
+$$
+\tau^\star=(s_0,\mathbf x_0,\mathbf a_0,s_1,\ldots,
+\mathbf x_{T_{\mathrm{end}}},\mathbf a_{T_{\mathrm{end}}},
+s_{T_{\mathrm{end}}+1}).
+$$
+
+Because $s_t$ is latent under partial observability, production systems cannot persist $\tau^\star$ completely. They can persist an observable trace:
+
+$$
+\hat\tau=
+(\text{requests},\text{responses},\text{tool calls/results},
+\text{workspace deltas},\text{timestamps},\text{usage},\text{validator events}).
+$$
+
+Final artifacts and workspace snapshots are evidence about state, not the complete latent state itself. [HB §3.3]
+
+### 3.6 Objective, runtime feedback, constraints, and evaluation
+
+Three signals must not be conflated:
+
+- **Training reward** $r_t$, if any, was used to optimize model or controller parameters before deployment.
+- **Runtime feedback** consists of observations, tool results, validator messages, approvals, and rejections supplied during execution. It affects future actions only if re-entered through $c_{t+1}$.
+- **Post-hoc evaluation** is an external measurement of a completed or terminated run. It need not be visible to the policy and is not automatically the reward that trained it.
+
+Define task utility $U_{\mathcal Q}(\tau^\star)$ and $K_C$ safety/resource cost functionals $C_k(\tau^\star)$ with limits $b_k$:
+
+$$
+\max_\pi\ \mathbb E_\pi[U_{\mathcal Q}(\tau^\star)]
+\qquad\text{subject to}\qquad
+\mathbb E_\pi[C_k(\tau^\star)]\le b_k,\quad k=1,\ldots,K_C.
+$$
+
+This is the constrained decision problem. In deployment, exact utility and costs may be unknown; the evaluator $J$ estimates them from observable evidence:
+
+$$
+R=\operatorname{Run}(M,H,\mathcal E,\mathcal Q),
+\qquad
+\widehat U_J=\operatorname{Eval}(\hat\tau,\text{artifacts};J).
+$$
+
+Harness-Bench instantiates one diagnostic score:
+
+$$
+\operatorname{TaskScore}_j
+\mathrel{=}
+\operatorname{Security}_j\,
+\operatorname{Completion}_j\,
+\operatorname{Process}_j,
+\qquad
+\operatorname{Security}_j\in\{0,1\},
+$$
+
+$$
+\operatorname{Process}_j
+\mathrel{=}
+\frac{
+\operatorname{Robustness}_j+
+\operatorname{ToolUse}_j+
+\operatorname{Consistency}_j
+}{3}.
+$$
+
+The multiplicative form requires completion, no scored security violation, and process quality for high aggregate credit [HB §3.4]. It is an evaluation instrument over available evidence, not a claim that the deployed policy observes or optimizes this scalar.
 
 ## 4. Invariants worth stating
 
-- **I1 (Markov in the pair).** Ψ conditions only on (s_t, a_t). Any apparent history dependence must be carried inside s_t (environment) or h_t/m_t (agent). This forces you to decide, for every piece of information, *where it lives* — the single most clarifying exercise in agent design.
-- **I2 (Observation ≠ state).** o_t is a function of s_t, never s_t itself. Topic 3 develops the consequences.
-- **I3 (Termination is part of the model).** T is not an afterthought; it is a component with its own failure modes (Topic 1 §7, Chapter 10).
-- **I4 (Score is external).** Nothing inside π computes TaskScore. Any "self-assessment" the model emits is an action (type 1), not an evaluation — a distinction the Fable/Mythos system card makes empirically vivid: the model "reported a production release as healthy without sufficient verification" and "says it tested work end to end, when it had not" [FSC §2.3.3.1–2]. Self-report is policy output, and policy output can be wrong or motivated.
+- **I1 — Markov after explicit augmentation.** $\Psi$ conditions on current state and joint action. Time, concurrent edits, pending I/O, and other history-dependent variables must enter the augmented state if they affect the next-state distribution.
+- **I2 — Observation may be partial.** In a fully observable special case, $x_t$ can identify $s_t$. In the agent settings of interest, tool and interface boundaries usually make $\Omega$ many-to-one, delayed, truncated, or noisy.
+- **I3 — Policy context is not raw observation.** $\Omega$ and $C_H$ have different owners and failure modes. A missing file can be an environment-interface omission; a truncated tool result is context construction.
+- **I4 — Termination cause is part of the result.** Model stop, verified success, budget exhaustion, safety stop, and execution error are not interchangeable outcomes.
+- **I5 — Evaluation is external.** A self-assessment emitted by $\pi$ is an action, not independent evidence. The Fable/Mythos system card documents false completion and verification claims [FSC §2.3.3].
+- **I6 — Trace is not trajectory.** $\hat\tau$ is auditable evidence; $\tau^\star$ contains latent variables and cannot generally be reconstructed exactly.
 
 ## 5. Mapping the formalism onto an executable runtime
 
-The model is only useful if every symbol has a concrete referent. Using the Claude Agent SDK loop [CAL] as the reference implementation:
+Using the Claude Agent SDK loop [CAL] as one concrete implementation:
 
-| Symbol | Concrete referent in the SDK loop |
+| Symbol | Concrete referent |
 |---|---|
-| 𝒬 | The user prompt plus system prompt (fixed per session) |
-| o_t | Tool results returned to the model (`UserMessage` after each tool execution) plus accumulated history |
-| h_t | The conversation history in the context window: "prompts, responses, tool inputs, tool outputs" accumulating over turns |
-| a_t (type 1) | Text content blocks in an `AssistantMessage` |
-| a_t (type 2, 4) | Tool-call blocks (`Read`, `Bash`, `Edit`, `Write`, …); environment-control actions are tool calls whose targets are workspace state |
-| Ψ | The actual effect of tool execution on the workspace — the part *nobody implements*; it is the world |
-| π's stochasticity | Model sampling; the SDK's `effort` parameter modulates deliberation depth without changing the policy's type |
-| m_t | Content re-injected each request (e.g., CLAUDE.md) and anything retrieved from stores |
-| T (model-decided) | The model produces a response with no tool calls |
-| T (harness-decided) | `max_turns`, `max_budget_usd`; terminal `ResultMessage` subtypes: `success`, `error_max_turns`, `error_max_budget_usd`, `error_during_execution` |
-| τ | The full message stream: `SystemMessage(init)` → alternating `AssistantMessage`/`UserMessage` → `ResultMessage` (with cost, usage, session ID) |
+| $\mathcal Q$ | User task plus explicit task constraints; stable system policy belongs to $H$, not to the task |
+| $\rho_0$ | Initial workspace/session state induced by task fixtures and runtime initialization |
+| $s_t$ | Complete environment state, including unobserved files, pending effects, external changes, and hidden service state |
+| $x_t$ | Raw tool results, read outputs, error messages, and other interface observations |
+| $C_H$ | System prompt, tool schemas, history selection, persistent-context injection, retrieval, and compaction |
+| $c_t$ | The assembled request visible to the model |
+| $\pi_M$ | The model's conditional distribution over text and tool-call proposals |
+| $\mathbf y_t$ | Sampled model proposal: text, candidate calls, or a terminal proposal |
+| $\widetilde{\mathbf a}_t$ | Proposal set admitted by parsing, schema, permission, and budget gates |
+| $\mathbf a_t$ | Joint action actually dispatched, including explicit no-op; multiple calls require a scheduling policy |
+| $\Psi$ | Effects of tool execution and exogenous environment changes |
+| $\kappa_t$ | Model stop proposal, verified success gate, budget stop, safety stop, or execution error |
+| $\hat\tau$ | Persisted message and tool-event stream plus workspace deltas, usage, and validator events |
+| $J$ | Versioned external evaluator consuming trace evidence and artifacts |
 
-Two engineering facts fall out of this mapping. First, **h_t is physically bounded**: the context window accumulates until compaction summarizes older history [CAL] — meaning the policy's effective observation of its own past is lossy (Topic 3). Second, **turns are the natural unit of the process**: "a turn is one round trip... Claude produces output that includes tool calls, the SDK executes those tools, and the results feed back" [CAL]; per-turn analysis is where error-accumulation math (Topic 8) attaches.
+Two facts follow. First, policy-visible history is bounded: compaction can summarize older events [CAL], so $C_H$ is a lossy observation transformation. Second, a runtime turn and the formal event index are not identical: one model turn can propose several tool actions, while asynchronous effects can create events between turns. Reliability reports must state their counting unit.
 
 ## 6. What the formalism buys you: three worked consequences
 
-**(a) It locates disagreements.** "The agent forgot the constraint" is ambiguous. In the model it is exactly one of: the constraint left h_t (compaction loss), never entered o_t (observation design), was absent from m_t (retrieval miss), or was present and π ignored it (policy failure). Each has a different fix and a different owner. [MEM §2.2 gives the memory operators; CAL gives compaction]
+**(a) It locates disagreements.** "The agent forgot the constraint" decomposes into testable hypotheses: the task contract omitted it; $\Omega$ never exposed relevant state; $C_H$ truncated it; retrieval failed; $\pi_M$ sampled an inconsistent proposal; or admission/dispatch altered the proposal. More than one cause can co-occur, so incident attribution should retain uncertainty rather than force one label.
 
-**(b) It exposes what benchmarks hold fixed.** Harness-Bench's protocol fixes (E, T, J, budgets) and varies H — so its 23.8-point spread [HB §4.2] is a statement about how much of π's effective behavior lives *outside the model*. CompWoB composes T while holding the base capabilities fixed — its 94.0% → 24.9% collapse [CompWoB] is a statement about Ψ-trajectory length and h_t interference, not about per-action competence. The formalism is what lets you say which knob each result turned.
+**(b) It exposes what benchmarks hold fixed.** Harness-Bench fixes $(\mathcal E,\mathcal Q,J,\text{budgets})$ and varies $(M,H)$, making configuration-level variation observable [HB §4.1–4.2]. CompWoB changes the task distribution by composing two to eight subtasks; its aggregate base and compositional rates do not by themselves isolate trajectory length, context interference, or state coupling. Those mechanisms require matched per-composition or intervention-based analysis. [CompWoB]
 
-**(c) It makes "multi-agent" non-mystical.** N > 1 adds an index and a visibility function h_t^i — nothing else. Coordination is either explicit (communication actions, type 5) or environment-mediated (through Ψ) [MEM §2.1]. Chapter 9's coordination-tax analysis is bookkeeping over this same structure.
+**(c) It makes multi-agent assumptions explicit.** $N>1$ requires a joint action, scheduler, visibility relation, and conflict semantics. Coordination may be explicit through communication actions or environment-mediated through $\Psi$ [MEM §2.1], but its reliability cost is not captured by merely adding an agent index.
 
 ## 7. Experiments and measurement hooks
 
-A formal model earns its keep by dictating what to log. Minimum instrumentation implied by the symbols:
+Minimum instrumentation implied by the observable variables:
 
-- Persist τ completely — Harness-Bench records "model requests and responses, tool calls, workspace changes, and usage statistics" reconstructed into a unified trace, and derives four evidence sources per run: final workspace state, execution trace, usage statistics, validator outputs [HB §3.3]. Anything less and the symbols above are unobservable.
-- Log the *cause* of T for every run (model-decided vs each budget subtype [CAL]); the distribution of termination causes is a cheap, high-signal reliability metric.
-- Score with an explicit, versioned J (Harness-Bench pins claude-sonnet-4.6 as the fixed external judge across all trajectories [HB §4.1]) — otherwise TaskScore drift is indistinguishable from agent drift.
+- Persist $\hat\tau$, not an imaginary complete latent trajectory. Harness-Bench records model requests/responses, tool calls, workspace changes, usage, and validators, then derives four evidence sources: final workspace state, execution trace, usage statistics, and validator outputs [HB §3.3].
+- Record both proposed and admitted actions so model-policy and harness-policy failures remain distinguishable.
+- Log the typed cause of $\kappa_t$ and whether an external validator confirmed success.
+- Version $J$ and retain component scores. Harness-Bench pins one judge across compared trajectories [HB §4.1]; a judge change is an instrument change that requires a bridge study for longitudinal comparison.
+- In multi-agent systems, log scheduler decisions, message visibility, causal ordering, and conflicting writes.
 
 ## 8. Failure modes visible only at this level of abstraction
 
-- **State–belief divergence:** the workspace (s_t) and the model's account of it (inside h_t) part ways; Topic 3's subject. Empirically instantiated by the false-completion examples in [FSC §2.3.3].
-- **Action-type confusion:** planning output (type 3) mistaken by the harness for environment control (type 4) — executing a *proposed* plan step because it parsed like a command. The action taxonomy exists precisely so interfaces can type-check this.
-- **Termination race:** a model-decided stop while environment effects of the last action are still settling; τ ends, Ψ has not. Idempotency and verification (Chapters 3, 5) live here.
-- **History contamination:** in multi-agent settings h_t^i may include other agents' unverified claims [MEM §2.1]; garbage observation in, confident action out — Chapter 9's cascading-hallucination problem in embryo.
+- **State–belief divergence:** the environment state and the policy-visible reconstruction part ways; Topic 3 develops the mechanisms.
+- **Action-type confusion:** planning output is parsed as an executable environment action. Typed proposal/admission interfaces prevent this class of ambiguity.
+- **Termination race:** a model proposes stop while the last environment effect is pending. Pending effects belong in augmented state and must be drained or cancelled before verified success.
+- **History contamination:** untrusted tool output or another agent's unsupported claim enters $C_H$ as if it were evidence.
+- **Scheduler ambiguity:** simultaneous actions are serialized differently across runs, changing $\Psi$ while the high-level transcript appears identical.
+- **Evaluator leakage:** information intended only for $J$ enters $c_t$, changing the policy being measured.
 
 ## 9. Limitations
 
-- The formalism abstracts internal deliberation away [MEM §2.1]. That is a strength for contracting and a weakness for interpretability: phenomena like evaluation awareness — the Fable/Mythos card reports "rates of evaluation awareness and reasoning about being graded are significant, and not always verbalized" [FSC] — live inside the abstracted box and are invisible to τ-level analysis.
-- Ψ is assumed stationary within a task. Live environments (drifting web state, concurrent human edits) violate this; Harness-Bench deliberately sandboxes offline to escape the violation [HB §3.2], which is also an admission that the clean model does not fully describe production.
-- 𝒬 fixed-within-task excludes mid-run re-instruction, which streaming interfaces permit [CAL]. Extending 𝒬 to a process is straightforward but the sources do not formalize it, so neither do we.
+- A POMDP is an abstraction, not a claim that production teams know $\rho_0$, $\Psi$, or $\Omega$ numerically. Its value is boundary discipline and explicit uncertainty.
+- Internal deliberation remains hidden inside $\pi$ [MEM §2.1]. Trace-level analysis cannot prove why a sampled action occurred.
+- Stationarity requires state augmentation. Live web state, concurrent edits, clock time, and provider changes violate a naive stationary model unless represented as state or as a versioned change in $\mathcal E$.
+- Treating $\mathcal Q$ as fixed excludes mid-run re-instruction. An interactive task can instead model $\mathcal Q_t$ as part of state and record principal-authorized updates.
+- The constrained objective states what should be optimized; the external evaluator is only an estimator and can be biased, noisy, or incomplete.
 
 ## 10. Production implications
 
-1. **Design by symbol assignment.** For every component in a proposed architecture, write down which of {O, π, Ψ-interface, m, T, J} it implements. Components that implement none are dead weight (harness entropy, Chapter 3); components implementing two are refactor targets.
-2. **Contract at the boundaries.** o_t and a_t are the system's typed interfaces; schema-validate both (Chapter 5).
-3. **Never let π grade itself.** Invariant I4 is the formal version of "trust but verify"; the system-card evidence [FSC §2.3.3] shows the verification must be external.
-4. **Log τ or accept blindness.** Every later chapter's methodology (evals, observability, incident response) consumes the trajectory; it must exist.
+1. **Design by typed boundary.** Assign each component to one or more of $\rho_0$, $\Psi$ interface, $\Omega$, $C_H$, $\pi$, scheduler $\sigma$, termination rule $\mathsf K$, utility/constraints, or evaluator $J$.
+2. **Validate both proposal and admission.** Schema-check model output, then independently enforce permissions, preconditions, idempotency, and action-specific safety policy.
+3. **Do not let policy output serve as its only evidence.** Use external validators where the task admits them and label judgment-only outcomes accordingly.
+4. **Persist observable evidence and its limits.** Record $\hat\tau$ completely enough for replay and audit, while documenting latent state that remains unobserved.
+5. **Report the counting unit.** Step, action, event, turn, and run are different units; error-accumulation analysis is invalid when they are silently interchanged.
 
 ## 11. Connections
 
-- Topic 3 develops I2 (partial observability) into belief-state engineering.
-- Topic 4 splits π into model policy and harness policy — the composition this topic treated as one function.
-- Topic 8 computes over τ lengths. Topic 12 fixes the notation introduced here for the rest of the book.
-- Chapter 7 expands m_t into the full memory lifecycle (formation F, evolution E, retrieval R operators [MEM §2.2]).
+- Topic 3 derives the belief update implied by $(\Psi,\Omega)$ and then shows how deployed systems approximate it through $C_H$ and memory.
+- Topic 4 expands $C_H$, model proposals, harness admission, application routing, and environment dispatch into a typed execution pipeline.
+- Topic 8 computes conditional success over event sequences; Topic 12 fixes the notation for the rest of the book.
+- Chapter 7 expands $m_t$ into formation, evolution, and retrieval operators.
 
 ## Sources
 
-[MEM] Memory in the Age of AI Agents: A Survey, arXiv:2512.13564 (`Knowledge_source/2512.13564v2.pdf`) §2.1–2.2
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.3–3.4, §4.1–4.2
+[POMDP] Kaelbling, Littman, and Cassandra, "Planning and Acting in Partially Observable Stochastic Domains," *Artificial Intelligence* 101, 1998 — https://doi.org/10.1016/S0004-3702(98)00023-X
+[CMDP] Altman, *Constrained Markov Decision Processes*, Chapman & Hall/CRC, 1999
+[MEM] Memory in the Age of AI Agents: A Survey, arXiv:2512.13564 (Knowledge_source/2512.13564v2.pdf) §2.1–2.2
+[HB] Harness-Bench, arXiv:2605.27922 (Knowledge_source/2605.27922v1.pdf) §3.1–3.4, §4.1–4.2
 [CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
 [CompWoB] Furuta et al., TMLR — https://deepmind.google/research/publications/46840/
-[FSC] Claude Fable 5 & Mythos 5 System Card, June 9 2026 (`Knowledge_source/`) Exec. Summary, §2.3.3
+[FSC] Claude Fable 5 & Mythos 5 System Card, June 9 2026 (Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf) §2.3.3

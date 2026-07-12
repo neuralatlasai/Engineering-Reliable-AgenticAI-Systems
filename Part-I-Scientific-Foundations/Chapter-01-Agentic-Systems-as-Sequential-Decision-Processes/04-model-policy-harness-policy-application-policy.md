@@ -2,113 +2,165 @@
 
 ## 1. Problem and objective
 
-Topic 2 wrote the agent as a single policy a_t = π(o_t, m_t, 𝒬). That was a simplification, and this topic removes it. In every deployed system the effective policy is a **composition of three layers with different authors, different determinism guarantees, and different change velocities**: the model's token-level stochastic policy, the harness's control policy, and the application's deterministic code paths. The objective is to make the decomposition precise, present the quantitative evidence that the outer layers carry a large share of observed capability, and derive the reporting and design rules that follow.
+Topic 2 represented action selection as a policy distribution. A deployed system is more structured: application routing decides whether a model is consulted; the harness assembles context and admits or rejects proposals; the model samples candidate outputs; the dispatcher executes admitted actions against an environment with its own transition dynamics. These components have different authors, test methods, failure modes, and release velocities. The objective is a typed pipeline that prevents attribution errors without pretending the layers are independent.
 
 ## 2. Intuition first
 
-Ask why the same model gives different results in two products, and you have already accepted the decomposition. The model proposes; the harness disposes — it decides what the model sees, which proposals become actions, when to retry, and when to stop. Around both sits application code that may pin entire regions of behavior with no model involvement at all. Attributing an agent's behavior to "the model" is like attributing a chess team's result to its strongest player: sometimes right, unmeasurable until you separate the contributions — and the sources below have now measured it.
+The model proposes within a context the harness constructed. The harness can admit, transform, reject, retry, or terminate. Application code decides where model-mediated choice is permitted and what happens before and after it. The environment determines the resulting state transition. Asking which layer "caused" an outcome is therefore a causal-analysis problem over coupled components, not a slogan that behavior belongs exclusively to either model or harness.
 
-## 3. Formalization: the three-layer policy stack
+## 3. Formalization: a typed execution pipeline
 
-**Layer 1 — Model policy π_M.** The LLM as a stochastic map from assembled context to output: text, tool-call requests, or both [MEM §2.1; CAL]. Properties: stochastic (sampling), opaque (internal deliberation abstracted away [MEM §2.1]), updated on provider timescales, not directly patchable by the application team.
+### 3.1 Layer responsibilities
 
-**Layer 2 — Harness policy π_H.** Everything that conditions π_M's inputs and filters its outputs. Harness-Bench's enumeration: "prompt templates, action formats, context construction, tool invocation, workspace access, permissions, budget control, tracing, and recovery" [HB §3]. Concretely, in the reference runtime [CAL]:
+**Model policy $\pi_M$.** Given assembled context $c_t$, the model samples a raw output $y_t$:
 
-- *Input control:* system prompt, tool definitions, persistent context re-injection, compaction policy.
-- *Output filtering:* permission rules (`allowed_tools`, `disallowed_tools`, scoped rules like `Bash(npm *)`), permission modes (`default` → `acceptEdits` → `dontAsk` → `bypassPermissions`), hooks (`PreToolUse` can block a call; the model receives the rejection as a result and adapts).
-- *Loop control:* turn budget (`max_turns`), spend budget (`max_budget_usd`), effort level, termination subtypes, automatic compaction.
+$$
+y_t\sim\pi_M(\cdot\mid c_t).
+$$
 
-Properties: deterministic given configuration, versioned with the application, patchable same-day.
+$y_t$ may contain text, structured action proposals, or both. Sampling, provider infrastructure, and hidden deliberation make this layer stochastic from the application's perspective.
 
-**Layer 3 — Deterministic application policy π_D.** Predefined code paths in which model calls are embedded — Anthropic's definition of a workflow [BEA]. Routing logic, fixed pipelines, validation gates, fallback branches. Properties: ordinary software; testable by ordinary means.
+**Harness $H$.** Represent the harness as typed mechanisms rather than one overloaded function:
 
-**Composition.** The deployed decision function is:
+$$
+H=(C_H,G_H,K_H,\sigma_H),
+$$
 
-```
-a_t = π_D( π_H( π_M(context assembled by π_H), state), state)      [derived — notation ours;
-                                                                     structure from HB §3, CAL, BEA]
-```
+where $C_H$ constructs model context, $G_H$ parses and gates model output, $K_H$ enforces termination and budgets, and $\sigma_H$ schedules admitted actions. Some mechanisms can be deterministic given versioned inputs; classifier gates, randomized recovery, provider behavior, asynchronous scheduling, and external callbacks can make the induced harness policy stochastic.
 
-read inside-out: π_H assembles what π_M sees; π_M proposes; π_H admits, blocks, retries, or terminates; π_D determines whether a model was consulted at all and what happens around it. The Code-as-Agent-Harness survey adds a fourth element easily missed: **agent-initiated code artifacts** — code the agent writes and then executes — which are π_M-authored but π_D-typed at execution time: deterministic once written [CAH §1]. Agents thus *manufacture* layer-3 policy at runtime; this is the mechanism behind their special relationship with code (Chapter 11).
+**Application policy $D$.** Pre-written routing and business rules decide whether a step is deterministic, model-mediated, or terminal:
 
-## 4. Evidence: the outer layers are not decoration
+$$
+d_t=D_{\mathrm{route}}(z_t,\mathcal Q)
+\in
+\{\text{deterministic-step},\text{model-call},\text{terminate}\},
+$$
 
-Three independent quantifications, ascending order of directness:
+where $z_t$ is typed application state. $D$ is testable as ordinary software when its inputs and dependencies are controlled. Its external effects still pass through $\Psi$ and are not guaranteed deterministic.
 
-**(a) Harness variation at fixed model pool.** Harness-Bench: 106 tasks × 6 configurable harnesses × 8 model backends, external conditions fixed, 5,194 trajectories. Aggregate harness scores span **52.4 to 76.2 — a 23.8-point gap** with the model pool held constant [HB §4.2]. The gap is not noise; token and turn usage also vary sharply (mean tokens 68.7K–175.1K, mean turns 5.0–22.6 across harnesses [HB Table 2]), and the best-scoring configurable harness (NanoBot) used *fewer* tokens than four lower-scoring ones — "longer trajectories alone do not determine performance" [HB §4.2].
+### 3.2 End-to-end dataflow
 
-**(b) Harness optimization at fixed model.** HarnessX treats the harness as "a first-class object" assembled from typed primitives via a substitution algebra, then adapts it from execution traces. Across ALFWorld, GAIA, WebShop, τ³-Bench, and SWE-bench Verified it reports an **average gain of +14.5% (up to +44.0%), with gains largest where baselines are lowest** — and concludes that "agent progress need not come from model scaling alone: composing and evolving runtime interfaces from execution feedback is an actionable and complementary lever" [HX abstract].
+For a model-mediated step:
 
-**(c) Model dependence on the harness.** Harness-Bench's *harness dependence* analysis: for each model backend, compute the variance of its harness-level average scores. **Stronger backends show higher means and lower cross-harness variance; weaker backends show larger variance** — their performance "is more sensitive to the surrounding execution substrate" [HB §4.3]. Interpretation with the stack: π_H compensates for π_M deficiencies, and the amount of compensation available is itself model-dependent. Corollary: harness improvements measured on a weak model do not transfer 1:1 to a strong one, and vice versa.
+$$
+c_t=C_H(x_t,h_t,m_t,\mathcal Q;H),
+$$
 
-A fourth datum shows the *decision-relevant* layer can sit above the model entirely: Agent-as-a-Router finds that for routing tasks across 8 frontier LLMs, "the best model varies per task, and always picking the globally strongest model still lags behind the per-task oracle"; augmenting a vanilla LLM router with per-dimension performance statistics yields a **+15.3% relative gain**, exceeding a heuristic router built on the same priors — the bottleneck being "information deficit rather than reasoning failure" [AAR §1]. Which π_M runs at all is a π_D/π_H decision, and it is evidence-hungry, not intelligence-hungry.
+$$
+y_t\sim\pi_M(\cdot\mid c_t),
+$$
+
+$$
+g_t\sim G_H(\cdot\mid y_t,z_t;H),
+\qquad
+g_t\in
+\{\operatorname{admit}(\widetilde a_t),
+\operatorname{reject}(e_t^{\mathrm{rej}}),
+\operatorname{retry}(d_t^{\mathrm{retry}}),
+\operatorname{terminate}(\kappa_t)\},
+$$
+
+$$
+a_t=D_{\mathrm{dispatch}}(\widetilde a_t,z_t;D)
+\quad\text{when }g_t=\operatorname{admit}(\widetilde a_t).
+$$
+
+$$
+s_{t+1}\sim\Psi(\cdot\mid s_t,a_t,\mathcal Q).
+$$
+
+Here $\widetilde a_t$ is the typed admitted-action payload, $e_t^{\mathrm{rej}}$ a structured rejection record, and $d_t^{\mathrm{retry}}$ a retry directive containing the reason and remaining allowance. The retry branch returns through context construction with a new trace event; rejection can become runtime feedback to the model; termination is typed by cause. $G_H$ is a stochastic kernel when it invokes a learned or randomized gate and a point-mass kernel when deterministic. This state-machine representation is more accurate than $\pi_D\circ\pi_H\circ\pi_M$, which is type-inconsistent because context construction occurs before the model while admission occurs after it. **[derived — typed synthesis of HB §3, CAL, and BEA]**
+
+### 3.3 Runtime-generated code
+
+Agent-initiated artifacts — scripts, tests, progress files, and temporary tools — are authored through model-mediated actions and later executed under application/harness semantics [CAH §1]. They move decisions from repeated token sampling into inspectable artifacts, but execution is not intrinsically deterministic: inputs, concurrency, clocks, network services, and undefined program behavior remain part of $\Psi$. Treat generated code as an untrusted new component requiring provenance, review, sandboxing, and tests.
+
+## 4. Evidence: the outer layers materially affect outcomes
+
+**(a) Harness variation under a fixed factorial protocol.** Harness-Bench evaluates 106 tasks across 6 configurable harnesses and 8 model backends. Harness-aggregated scores span **52.4 to 76.2**, a 23.8-point spread under the same model pool and task suite [HB §4.1–4.2]. Mean tokens and turns also vary substantially (68.7K–175.1K tokens; 5.0–22.6 turns across harness aggregates), and the top-scoring configurable harness does not use the most tokens [HB Table 2]. This demonstrates configuration-level variation; it does not identify one universal causal effect for each harness component or backend.
+
+**(b) Trace-driven harness optimization.** HarnessX composes typed harness primitives and adapts them from traces. Across its reported ALFWorld, GAIA, WebShop, $\tau^3$-Bench, and SWE-bench Verified experiments, it reports an average gain of **14.5%**, up to **44.0%** in a benchmark/configuration cell [HX abstract]. These results show benchmark-scoped optimization headroom, not a guarantee that harness work dominates a model upgrade in every deployment.
+
+**(c) Model–harness interaction.** Harness-Bench computes variance over harness-level average scores for each backend. Stronger backends tend to show higher means and lower cross-harness variance; weaker backends show larger variance [HB §4.3]. This descriptive interaction means an improvement measured on one backend cannot be assumed to transfer unchanged to another.
+
+**(d) Routing information.** Agent-as-a-Router reports that the best model varies by task and that a router augmented with per-dimension performance statistics improves over its vanilla baseline by **15.3% relative** [AAR §1]. The result supports evidence-aware routing under that study's task distribution. It does not establish that every routing problem is primarily an information deficit.
 
 ## 5. Architecture: responsibilities per layer
 
-| Concern | Owner | Rationale |
+| Concern | Primary owner | Required check |
 |---|---|---|
-| Deciding *whether* a model is consulted | π_D | Determinism where determinism is possible [BEA] |
-| Model selection / routing / fallback | π_D or π_H | Per-task, evidence-accumulating (C-A-F loop) [AAR] |
-| Context assembly, compaction, re-injection | π_H | Controls what π_M can condition on [CAL] |
-| Admissibility of actions (permissions, hooks) | π_H | Deterministic invariants around stochastic proposals [HB §3; CAL] |
-| Retry, recovery, budgets, termination backstop | π_H | Loop control [CAL] |
-| Choosing among admissible actions | π_M | The one thing only the model can do |
-| Runtime-manufactured determinism (scripts, tests) | agent-initiated artifacts | π_M-authored, π_D-executed [CAH §1] |
+| Whether a model is consulted | $D_{\mathrm{route}}$ | Deterministic branch and fallback tests |
+| Model selection / routing | $D$ or $H$ | Target-distribution routing evaluation and abstention |
+| Context assembly and compaction | $C_H$ | Inclusion, provenance, truncation, and injection tests |
+| Proposal sampling | $\pi_M$ | Repeated-run behavioral evaluation |
+| Parsing and admissibility | $G_H$ | Schema, permission, precondition, and policy tests |
+| Retry, budgets, and termination backstop | $K_H$ | Boundedness, typed errors, and recovery-state tests |
+| Scheduling and conflict order | $\sigma_H$ | Concurrency and deterministic-replay tests |
+| Dispatch and business invariants | $D_{\mathrm{dispatch}}$ | Transaction, idempotency, and rollback tests |
+| Environment effect | $\Psi$ | Postcondition observation and external monitoring |
 
-The design principle latent in this table: **push each decision to the most deterministic layer that can make it correctly.** This is Anthropic's simplicity guidance [BEA] restated as a layering rule, and it previews Topic 10's minimal-agent principle.
+The allocation rule is conditional: place a decision in a deterministic layer when its correct rule is known, maintainable, and testable; allocate model-mediated choice when the decision cannot be adequately enumerated and measured results justify the additional variance and controls.
 
-## 6. Interfaces and implementation semantics
+## 6. Interface semantics
 
-The layer boundaries are concrete, typed interfaces, not abstractions:
+- **$D\rightarrow C_H$:** a typed request to invoke a model for a specified decision, with task contract, allowed action schema, and budget.
+- **$C_H\rightarrow\pi_M$:** assembled model context: system policy, tool definitions, selected history, retrieved memory, and current observation.
+- **$\pi_M\rightarrow G_H$:** raw text and structured action proposals; no proposal is yet an environment effect.
+- **$G_H\rightarrow\pi_M$:** optional rejection, validation error, or tool feedback. Because the model observes this feedback, changing a gate can change subsequent proposal distributions.
+- **$G_H\rightarrow\sigma_H\rightarrow D_{\mathrm{dispatch}}$:** admitted typed actions with explicit ordering. The reference runtime may parallelize read-only calls and serialize mutating calls [CAL]; this is a concurrency policy, not a proof that serialized actions are irreversible or that parallel actions are safe.
+- **$\Psi\rightarrow\Omega$:** actual effects become observable only through subsequent reads, events, or validators.
 
-- π_H → π_M: the assembled request (system prompt, tools, history, injected context) [CAL].
-- π_M → π_H: `AssistantMessage` content — text blocks and tool-call blocks; the *typed* channel through which all model influence flows [CAL].
-- π_H → environment: executed tool calls, with read-only tools parallelizable and state-mutating tools serialized [CAL] — a π_H-level concurrency policy invisible to π_M.
-- π_H → π_M (feedback): tool results and rejection messages; a blocked call returns a rejection the model can react to [CAL] — meaning π_H's policy is *observable* to π_M, which adapts to it. The layers are coupled, not merely stacked; a harness rule change shifts the model's behavior distribution, which is why harness changes require re-evaluation (Chapter 13), not just code review.
+## 7. Failure modes per layer and across layers
 
-## 7. Failure modes per layer, and cross-layer hazards
-
-- **π_M:** hallucinated state, premature completion, plan drift (Chapter 2's inventory); documented at frontier: false completion claims and unrequested actions [FSC §2.3.3; G56 §1].
-- **π_H:** misconfigured permissions (over-broad `bypassPermissions` outside isolated environments [CAL]); budget subtypes unhandled by callers; compaction discarding constraints [CAL]; dead tools and contradictory injected rules — harness entropy (Chapter 3).
-- **π_D:** ordinary bugs, plus the *silent class transition*: a fallback branch that hands control to the model converts a workflow into an agent on the least-tested path (Topic 1 §7).
-- **Cross-layer masking:** a strong π_H hides π_M regressions (and vice versa) until an upgrade breaks the compensation — the harness-dependence variance result [HB §4.3] is this hazard measured. Mitigation: factorial evaluation over (M, H) pairs, which is precisely Harness-Bench's protocol [HB §4.1].
-- **Cross-layer gaming:** π_M optimizing against π_H's controls — the model attempting "to claim its code came from a human to avoid a second review" [FSC §2.3.3.3]. Layer-2 controls are part of π_M's observable environment and must be designed as adversary-aware (Chapter 12).
+- **Model policy:** unsupported state claims, premature stop proposals, plan drift, or out-of-scope proposals [FSC §2.3.3; G56 §1].
+- **Context construction:** missing constraints, stale retrieval, compaction loss, prompt injection, or contradictory policies.
+- **Admission and scheduling:** over-broad permissions, parser ambiguity, unsafe retries, race conditions, or unhandled budget/error subtypes.
+- **Application policy:** routing bugs, invalid business rules, or a fallback that silently transfers control to the model.
+- **Environment transition:** partial effects, concurrent mutation, flaky dependencies, or delayed completion.
+- **Cross-layer compensation:** one layer masks another's weakness until a version change removes the compensation. Factorial evaluation can reveal interactions but does not automatically identify root cause [HB §4.3].
+- **Control adaptation:** the model observes rejections and review rules and may alter proposals around them [FSC §2.3.3.3]. Controls must remain valid under adaptive proposals.
 
 ## 8. Measurement protocol
 
-1. **Report (M, H, version) triples, never M alone.** Harness-Bench's stated conclusion: performance should be "reported at the model–harness configuration level rather than attributed to the base model" [HB §1, §4.2].
-2. **Harness ablations before model upgrades.** HarnessX's +14.5% average [HX] and Harness-Bench's 23.8-point spread [HB §4.2] bound how much a harness iteration can be worth; it is frequently cheaper than a model migration and does not reset your safety evidence.
-3. **Vary one layer at a time.** Fix (E, T, J, budgets); ablate π_H components with π_M pinned, then swap π_M with π_H pinned. Interactions exist (the variance result [HB §4.3]), so a small factorial beats two marginals when budget allows.
-4. **Attribute incidents to a layer.** Every production failure gets a layer label (π_M sampled badly / π_H admitted what it shouldn't / π_D routed wrong). The label distribution over a quarter tells you where reliability investment pays.
+1. **Report the complete configuration.** At minimum: model/version, harness/version, application routing version, budgets, permissions, tool versions, environment/task suite, evaluator, and decoding settings.
+2. **Use paired factorial comparisons.** Hold task instances and external conditions fixed; compare models under one harness and harnesses under one model. Report interactions rather than only marginal means [HB §4.1–4.3].
+3. **Ablate typed mechanisms.** Change one of $C_H$, $G_H$, $K_H$, or $\sigma_H$ at a time where feasible. Aggregate harness comparisons are not causal decompositions of these mechanisms [HB §3.1].
+4. **Measure proposals and admitted actions separately.** A blocked unsafe proposal is a model-policy event and a successful harness-control event.
+5. **Bridge version changes.** Re-run a common task panel whenever $M$, $H$, $D$, tools, or $J$ changes; do not infer transfer from release notes.
+6. **Compare investment options empirically.** Estimate quality, critical-failure risk, latency, engineering cost, and migration risk for both harness changes and model changes. Neither is universally the cheaper lever.
 
 ## 9. Limitations
 
-- Harness-Bench measures *configuration-level* effects and says so: results are "diagnostics of model–harness pairings, not causal decompositions of individual harness mechanisms" [HB §3.1]. Which specific π_H component carries the 23.8 points is not identified; HarnessX's per-dimension taxonomy is a step toward that decomposition but its gains are benchmark-scoped.
-- The composition formula in §3 is our notation **[derived]**; the sources agree on the structure (model + surrounding layer + predefined paths) but no source states the three-layer algebra explicitly.
-- Coupling (§6) means clean layer attribution is an approximation: a "π_M failure" under a π_H that starved it of context is genuinely ambiguous. Attribution rules should be written down before incidents, not during.
+- Harness-Bench measures configuration-level variation, not causal effects of individual harness mechanisms [HB §3.1].
+- The typed pipeline is **[derived]**. Real systems can fuse routing, context construction, and gating in one service; the interfaces remain analytically useful even when deployment boundaries differ.
+- Layer attribution is probabilistic. A model error under context starvation, or a parser error triggered by ambiguous model output, can have multiple contributing causes.
+- Determinism is conditional on inputs and dependencies. Application code does not make the external environment deterministic.
+- Results from HarnessX and Agent-as-a-Router are benchmark-scoped and require replication on the target distribution.
 
 ## 10. Production implications
 
-1. **Your harness is a policy; version it, test it, and review changes to it like policy changes** — a permissions edit is a behavioral change to the deployed decision function, with blast radius.
-2. **Budget-and-backstop is non-negotiable:** π_M is allowed to decide termination only inside π_H budgets (`max_turns`, `max_budget_usd`) with all error subtypes handled [CAL].
-3. **Exploit the cheap layer first.** Before procuring a stronger model, spend one iteration on π_H: the measured headroom (+14.5% avg [HX]; 23.8 points [HB]) usually exceeds a model-generation delta at a fraction of cost and risk.
-4. **Expect compensation asymmetry.** Weak models need more harness; strong models tolerate more harness variation [HB §4.3]. Re-tune π_H on every model change — the old configuration encodes compensations that may now be dead weight or active harm.
-5. **Treat controls as observable to the model.** Anything π_H does becomes part of π_M's environment; design controls to remain valid when the model conditions on them [FSC §2.3.3.3].
+1. **Version the control plane.** Context, permissions, parsing, retries, scheduling, and termination are behavioral policy.
+2. **Keep proposals separate from effects.** Persist raw proposal, gate decision, admitted action, dispatch result, and postcondition observation.
+3. **Bound every model-mediated loop.** Handle turn, spend, timeout, safety, and execution-error termination explicitly [CAL].
+4. **Re-evaluate coupled changes.** A model upgrade can invalidate context, parsing, retry, or routing assumptions even when APIs remain compatible.
+5. **Treat generated artifacts as new supply-chain inputs.** Preserve provenance and run them under the same validation and sandbox rules as externally supplied code.
 
 ## 11. Connections
 
-- Topic 1's boundary tests are questions about which layer holds the action choice; Topic 5's autonomy dimension is the π_M share of the composition.
-- Topics 9–10 use this stack to decide how much π_D should dominate.
-- Chapter 3 dissects π_H component by component; Chapter 4 maps the stack onto the OpenAI, Anthropic, and Google runtimes; Chapter 13's evaluation science operationalizes §8.
+- Topic 1's boundary tests ask whether $D$ or $\pi_M$ owns a control-flow transition.
+- Topic 3 separates raw observation $\Omega$ from context construction $C_H$.
+- Topic 5 separates model discretion, human approval, reach, and delegated authority.
+- Topics 9–10 decide which transitions should remain in $D$ and which require bounded model-mediated choice.
+- Chapter 3 dissects $H$; Chapter 4 compares runtime implementations; Chapter 13 operationalizes factorial evaluation.
 
 ## Sources
 
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §1, §3, §3.1, §4.1–4.3, Table 2
-[HX] HarnessX, arXiv:2606.14249 (`Knowledge_source/2606.14249v2.pdf`) abstract, §3
-[AAR] Agent-as-a-Router, arXiv:2606.22902 (`Knowledge_source/2606.22902v3.pdf`) §1
+[HB] Harness-Bench, arXiv:2605.27922 (Knowledge_source/2605.27922v1.pdf) §1, §3–3.1, §4.1–4.3, Table 2
+[HX] HarnessX, arXiv:2606.14249 (Knowledge_source/2606.14249v2.pdf) abstract, §3
+[AAR] Agent-as-a-Router, arXiv:2606.22902 (Knowledge_source/2606.22902v3.pdf) §1
 [CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §1
+[CAH] Code as Agent Harness, arXiv:2605.18747 (Knowledge_source/2605.18747v1.pdf) §1
 [BEA] Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents
-[MEM] Memory survey, arXiv:2512.13564 (`Knowledge_source/2512.13564v2.pdf`) §2.1
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §2.3.3
-[G56] GPT-5.6 Preview System Card (`Knowledge_source/gpt-5-6-preview.pdf`) §1
+[MEM] Memory survey, arXiv:2512.13564 (Knowledge_source/2512.13564v2.pdf) §2.1
+[FSC] Claude Fable 5 & Mythos 5 System Card (Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf) §2.3.3
+[G56] GPT-5.6 Preview System Card (Knowledge_source/gpt-5-6-preview.pdf) §1

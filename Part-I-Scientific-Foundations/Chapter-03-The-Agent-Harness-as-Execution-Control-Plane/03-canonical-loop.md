@@ -38,23 +38,55 @@ The loop is the agent's heartbeat, and its phases answer seven questions in orde
 
 **[derived — mapping ours; each cell sourced]** The table's diagonal is the finding: each runtime makes *one* canonical phase first-class that the others leave implicit — ADK the commit discipline, the SDK the budget-bounded model-decided stop with interception points, PEV the verification gate. No shipped loop makes all seven mandatory. The builder's job is to know which phases their substrate leaves optional and to supply them; the failure data says verify and terminate-by-verification are the ones most often missing and most expensive when missing [FSC §6.4.1.4; CAH §3.5's failure clusters include "premature termination"].
 
-## 5. Formalization: the loop as a guarded transition system
+## 5. Formalization: the loop as typed harness stages
 
-One turn is a guarded transition **[derived — formalization ours; guards sourced]**:
+The book's notation contract (Chapter 1, Topic 12 §3.3) defines the typed stages this loop instantiates; one decision event $t$ executes them in order **[synthesis — stage types from the notation contract; phase semantics sourced per §3]**:
 
-```
-(b̂, s, budgets)
-   ──gather──▶ context c = A(b̂, instructions, retrieval)
-   ──infer───▶ proposals P ~ π_M(· | c)
-   ──act─────▶ executed E = { p ∈ P : policy(p) = allow }, applied under tier(p)
-   ──observe─▶ results r = route(compress(effects(E)))
-   ──verify──▶ verdict v = sensors(s′) ∈ {pass, fail(evidence)}
-   ──update──▶ commit(Δstate, Δartifacts); budgets ← budgets − cost
-   ──terminate?─▶ stop iff  V(s′) ∨ B(budgets) ∨ H(escalation)
-                   — verified-done ∨ budget-exhausted ∨ human-decided
-```
+$$
+C_t=\operatorname{Assemble}_{H_c}\!\left(Q_j,\,X_t,\,\mathcal H_t,\,R_t,\,\mathcal U_c,\,B_c,\,P_c\right)
+\qquad\text{(gather)}
+$$
 
-The three-disjunct stop predicate is the design point: *model satisfaction appears in none of the disjuncts.* The model's no-tool-call response is, in a well-built loop, merely the trigger to *evaluate* V — not V itself. This is Chapter 2 Topic 14's premature-completion evidence [FSC §6.4.1.4] turned into a type signature.
+$$
+Y_t\sim\pi_{M_c}\!\left(\cdot\mid C_t,\,\nu_c\right)
+\qquad\text{(infer: a sampled proposal, not yet an action)}
+$$
+
+$$
+\Xi_t=\operatorname{Parse}_{H_c}(Y_t),\qquad
+\widetilde A_t=\operatorname{Admit}_{H_c}\!\left(\Xi_t,\,P_c,\,B_c\right),\qquad
+A_t=\operatorname{ScheduleExec}_{H_c}\!\left(\widetilde A_t,\,\mathcal U_c\right)
+\qquad\text{(act)}
+$$
+
+$$
+X_{t+1}\sim\Omega\!\left(\cdot\mid S_{t+1},A_t,Q_j\right),\qquad
+\text{routed as } \operatorname{route}\!\left(\operatorname{compress}(X_{t+1})\right)
+\qquad\text{(observe)}
+$$
+
+$$
+v_t=\operatorname{Sensors}\!\left(\hat\tau_{0:t},\,\text{workspace}\right)\in\{\text{pass},\text{fail}(\text{evidence})\}
+\qquad\text{(verify)}
+$$
+
+$$
+\operatorname{commit}\!\left(\Delta\text{state},\,\Delta\text{artifacts}\right);\quad
+B\leftarrow B-\operatorname{cost}(t)
+\qquad\text{(update state)}
+$$
+
+$$
+\kappa_t=\mathsf K\!\left(\hat\tau_{0:t},\,B,\,v_t\right)\in
+\{\mathrm{continue},\,\mathrm{success},\,\mathrm{model\_stop},\,\mathrm{budget},\,\mathrm{timeout},\,\mathrm{execution\_error},\,\mathrm{policy\_block}\}
+\qquad\text{(terminate)}
+$$
+
+Three properties of this typing are load-bearing:
+
+1. **Proposal ≠ admitted ≠ executed.** $Y_t$, $\Xi_t$, $\widetilde A_t$, and $A_t$ are distinct objects with distinct failure outcomes (parse failure, rejection, timeout, no-op), all recorded in $\hat\tau$ — the harness acts both before and after the model and is a stateful transducer, not a single post-model function (Ch. 1, Topic 12 §3.3).
+2. **$\mathrm{model\_stop}$ and $\mathrm{success}$ are distinct terminal causes.** A no-tool-call emission is a model *proposal pattern*; whether it terminates the run, and whether the terminal state counts as success, are harness and validator decisions [CAL; CAH §3.4.4]. Model satisfaction appears in no success-classifying disjunct — this is Chapter 2 Topic 14's premature-completion evidence [FSC §6.4.1.4] turned into a type signature.
+3. **$v_t$ is a control input, not a log line.** The verify verdict feeds $\mathsf K$ and the next $\operatorname{Assemble}$ (repair context), which is exactly [CAH §3.4.4]'s requirement that repair, reflection, and termination be consequences of Verify.
 
 ## 6. Failure modes, phase-indexed
 
@@ -77,7 +109,7 @@ The three-disjunct stop predicate is the design point: *model satisfaction appea
 1. **Audit your loop against the seven phases**; for each, write down what implements it and what happens when it fails. Blank cells — usually verify and terminate-by-verification — are the work plan.
 2. **Make verify a phase, not a hope:** wire sensors into the loop (post-mutation checks, milestone validations) rather than trusting the model to call them; the substrate supports it (hooks [CAL]; processors [HX]) — the discipline is yours to add.
 3. **Adopt commit-before-continue for state you cannot afford to lose** [ADK] — or document precisely which state is fire-and-forget and why.
-4. **Write the stop predicate as §5's three disjuncts** and log which disjunct fired per run; the distribution (verified-done vs. budget-killed vs. escalated) is the single most informative loop-health metric this chapter offers.
+4. **Log $\kappa_t$ per run and report its distribution** — the split among $\mathrm{success}$ (validator-confirmed), $\mathrm{model\_stop}$ (unverified model proposal accepted), and the budget/timeout/error subtypes is the single most informative loop-health metric this chapter offers; a high $\mathrm{model\_stop}$ share means the loop is trusting the least trustworthy stop signal (§5.2).
 5. **Engineer the observe phase's two decisions separately:** what the model sees (compressed, routed) and what the record keeps (full fidelity) [CAH §3.3.4] — conflating them either drowns the model or blinds the audit.
 
 ## 9. Connections

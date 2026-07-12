@@ -2,76 +2,128 @@
 
 ## 1. Problem and objective
 
-A turn may contain several tool calls, and a run contains many turns. How those calls are ordered — what may run concurrently, what must serialize, what depends on what — is a concurrency-control problem sitting exactly on the boundary between model prediction and harness execution. The model *proposes* a set of calls; the harness *schedules* them. The objective of this topic is to fix the four ordering regimes, state which layer controls each, ground the scheduling semantics in the two interfaces that document them, and treat the reliability consequences (write conflicts, stale-read hazards, wasted speculation) with the seriousness ordinary systems engineering gives them — because they are the same hazards under a new name.
+A response may contain zero, one, or multiple tool-call proposals; a run may contain many responses. Call **emission cardinality** belongs to the model/API contract, while execution order, isolation, cancellation, and partial-failure handling belong to the immediate control envelope. The objective is to separate these layers and replace the unsafe read/write binary with a dependency-and-conflict DAG over declared resources, side-effect properties, and consistency requirements.
 
 ## 2. Intuition first
 
-An agent's tool calls form a tiny distributed system per turn. Reads can fan out: checking three files simultaneously costs latency of one. Writes cannot: two edits racing to the same file is a lost-update bug regardless of how intelligent the writer is. Dependency is the third regime: you cannot fix the test until you've read its output — the data flows *through the model's next decision*, forcing a full turn boundary. And speculation is the fourth: doing work now that a future decision may render unnecessary, buying latency with possibly-wasted tokens. None of this is novel computer science. What is novel is that the *transaction planner* is a stochastic policy — the schedule's safety cannot rely on the proposer's discipline, so it must live in the executor.
+Concurrency is safe when operations are independent or the resource system supplies appropriate isolation — not merely because an operation is labelled “read.” Parallel reads can overload a service or observe different versions; parallel writes can be safe when they touch disjoint resources, commute, are idempotent, or execute in isolated transactions. Dependencies can be data dependencies, control dependencies, or conflicts over shared state. Speculation adds work whose result may be discarded and therefore requires cancellation and effect containment. Because the proposer is stochastic and tool metadata can be wrong, the executor must validate rather than trust the proposed schedule.
 
 ## 3. The four regimes, with their controlling layer
 
 ### 3.1 Parallel calls — model proposes, harness disposes
 
-Both documented interfaces expose parallelism as a controlled capability. On the API side: "the `parallel_tool_calls` parameter controls execution strategy. When enabled, the model can invoke multiple tools simultaneously; when disabled (`false`), tools execute sequentially" [OAT]. On the runtime side, the safety policy is typed by mutation: "when Claude requests multiple tool calls in a single turn... read-only tools (like `Read`, `Glob`, `Grep`, and MCP tools marked as read-only) can run concurrently. **Tools that modify state (like `Edit`, `Write`, and `Bash`) run sequentially to avoid conflicts.** Custom tools default to sequential execution," opting into concurrency only via an explicit `readOnlyHint` annotation [CAL].
+OpenAI's function-calling interface uses `parallel_tool_calls` to control **emission cardinality**: setting it to `false` ensures that a response contains zero or one function call. For developer-defined functions, the application must execute calls and return their results; the parameter is not an execution scheduler [OFC]. The current guide also documents feature interactions, including strict-mode limitations for multiple calls on some fine-tuned-model paths [OFC].
 
-Read the design decisions in that paragraph: concurrency is an *opt-in property of the tool contract*, not a trust in the model's proposal; the default for unknown tools is the safe (serial) order; and the read/write distinction — Chapter 1 Topic 6's reversibility axis — is what licenses parallelism at all.
+The cited Claude Agent SDK does implement an executor policy: built-in read-only tools and MCP tools marked read-only may run concurrently; mutating tools run sequentially; custom tools default to sequential unless annotated with `readOnlyHint` [CAL]. This is a conservative runtime heuristic, not a proof of conflict freedom. A production contract should additionally declare resource read/write sets, consistency requirements, idempotency, commutativity, isolation support, timeout behavior, and maximum safe concurrency.
 
 ### 3.2 Sequential calls — the safety default
 
-Serialization is the regime that makes each state mutation observable before the next begins: mutate → (optionally) verify → mutate. It is what gives the per-step verification of Chapter 1 Topic 8 §5 a place to stand — parallel writes have no "between" in which a check can run. The cost is latency, linear in the number of effectful calls.
+Serialization imposes program order within one executor and creates a point where a postcondition can run before the next local operation. It does not by itself guarantee isolation from other agents, external writers, eventual consistency, or an ambiguous timeout whose effect may already have committed. For $k$ serialized calls with latencies $\ell_i$, local scheduler latency is approximately $\sum_{i=1}^{k}\ell_i$ plus orchestration overhead; whether that cost is necessary depends on conflicts and the resource's transaction model.
 
 ### 3.3 Dependent calls — the turn boundary as data dependency
 
-When call B's *arguments* depend on call A's *results*, no scheduler can help: the dependency routes through π_M's next prediction. The loop structure encodes this — "each set of tool results feeds back to Claude for the next decision" [CAL] — so a dependency chain of length k costs k turns, each with full model latency. This is why dependency structure, not call count, drives agent latency (Chapter 14's decomposition), and why flattening dependencies — asking for independent information in one turn rather than drip-feeding — is a real optimization with a measurable turn-count signature [HB Table 2].
+If call $B$ requires the previously unknown result of call $A$ to construct its arguments, both cannot be emitted as ordinary fully bound same-turn calls. The runtime can either return $A$ to the model for another decision [CAL], or execute a harness-defined dataflow graph whose placeholders and transformations were declared in advance. A dependency chain of length $k$ that repeatedly returns through the model incurs $k$ tool-result round trips and their model latencies.
 
-The deepest version of dependency-flattening is code execution as the aggregation layer: instead of N dependent tool-call turns, the model writes one program in which the dependencies are ordinary dataflow, executed in a single call [CAH §2.2's code-for-acting; Chapter 5 treats this fully]. The dependency chain moves from "through the model, per link" to "through the interpreter, once" — the single most effective known reduction of both latency and n_stoch for tool-heavy steps.
+Generated code can move a dependency chain into one sandboxed program [CAH §2.2], reducing model round trips. That is a trade, not a universal optimum: the program gains data-local control flow but may reduce per-step authorization, observability, cancellation granularity, and fault isolation. Use it only when the sandbox, resource scopes, timeouts, and returned evidence preserve the required invariants.
 
 ### 3.4 Speculative calls — the honest gap
 
-Speculation — executing calls whose usefulness depends on decisions not yet made — must be flagged plainly: **no interface in this book's ledger documents speculative tool execution as a first-class mechanism.** The nearest sourced relatives are: parallel *sampling* of candidate trajectories in search-based planning, where multiple paths are explored and most discarded [CAH §3.1.3] — speculation over reasoning, with validator-arbitrated selection; and voting-parallelization [BEA] — speculative redundancy over answers. Speculative *effectful* execution (fire the probable-next write before the decision confirms it) would violate the read/write discipline of §3.1 and appears nowhere in the sources; for reads, prefetching is harmless in principle but is a harness feature you would build, not one you can cite. This paragraph is the section: the regime exists in classical systems, is largely unbuilt in shipped agent interfaces, and claims about it should be treated accordingly. **[gap noted]**
+Speculation executes work before its necessity is known. No interface in this chapter's ledger defines general speculative tool execution with cancellation and commit semantics. Even speculative reads consume money, quota, network capacity, and data-access authority; they can disclose sensitive identifiers or observe a non-repeatable version. Speculative writes require stronger containment: an isolated branch/transaction, deferred commit, or an idempotent and compensatable effect. Parallel candidate reasoning [CAH §3.1.3] is safer only because discarded branches need not cross an external effect boundary.
 
-## 4. Formalization: the per-turn schedule
+## 4. Formalization: dependency and conflict DAG
 
-Model a turn's proposed calls as nodes with two attributes: mutates ∈ {true, false} (from the tool contract: `readOnlyHint` [CAL]) and target (the resource touched). The documented scheduling policy is then **[derived — formalization of the sourced rules]**:
+Represent proposed operations as a directed acyclic graph $G=(V,E)$ with $E=E_D\cup E_C$, where $E_D$ contains data/control dependencies and $E_C$ contains serialization constraints induced by resource conflicts. Each node $v\in V$ declares input bindings, a resource read set $R_v$, write/effect set $W_v$, expected version or precondition, idempotency key, commutativity class, timeout, and cancellation semantics. Add a data/control edge $(u,v)\in E_D$ when $v$ requires $u$'s result or success. Add or resolve a conflict between $u$ and $v$ when
 
+$$
+W_u\cap(R_v\cup W_v)\ne\varnothing
+\quad\text{or}\quad
+W_v\cap(R_u\cup W_u)\ne\varnothing,
+$$
+
+unless the operations commute or the resource supplies sufficient isolation. A legal schedule is a topological order of $G$ that executes only conflict-free ready nodes concurrently and checks resource versions at the admission/commit boundary. **[derived — standard dependency/conflict-serializability construction applied to tool calls; CCRS]**
+
+For node latency $\ell_v$, total work and critical-path span are
+
+$$
+T_1=\sum_{v\in V}\ell_v,
+\qquad
+T_\infty=\max_{p\in\operatorname{Paths}(G)}\sum_{v\in p}\ell_v.
+$$
+
+With at most $P$ workers, any schedule satisfies
+
+$$
+T_P\ge\max\!\left(\frac{T_1}{P},T_\infty\right).
+$$
+
+Under the idealized work–span model, a greedy scheduler also satisfies
+
+$$
+T_P\le\frac{T_1}{P}+T_\infty,
+$$
+
+up to constant scheduling overhead [BRENT]. Real rate limits, locks, network queues, and cancellation delays add terms outside this ideal bound. The dominant structural latency is therefore the critical path under a concurrency bound, not raw call count. A naïve pairwise conflict construction costs $O(|V|^2)$ set checks; a resource-indexed implementation costs $O(N_{\mathrm{ann}}+|E|)$ expected bookkeeping for $N_{\mathrm{ann}}=\sum_v(|R_v|+|W_v|)$ resource annotations, excluding alias resolution and resource-specific lock/version checks.
+
+Execution results must preserve uncertainty about effects. A useful discriminated union is `Succeeded(evidence)`, `Rejected(reason)`, `Failed(error, effect=none|committed|unknown)`, `TimedOut(effect=none|committed|unknown)`, and `Cancelled(effect=none|committed|unknown)`. Downstream nodes run only when their dependency predicates accept the predecessor result. On fail-fast cancellation, already committed effects require compensation or a saga [SAGA]; an `unknown` effect requires idempotent reconciliation before retry.
+
+A later model turn is **not** a memory barrier. Read-after-write consistency follows only from the tool/resource contract — for example, a committed version token, transaction, linearizable API, or an explicit polling condition. External writers and eventually consistent stores remain outside per-turn ordering.
+
+```text
+INPUT: proposed calls, versioned tool contracts, worker bound P, deadline
+PRECONDITION: every effectful tool declares idempotency and effect-status semantics
+
+canonicalize resource identities and validate argument bindings
+construct data/control edges and resource-conflict edges
+reject cyclic graphs, unresolved bindings, or unauthorized resources
+initialize ready queue with zero-predecessor nodes
+
+while unfinished nodes remain and deadline has not expired:
+    revalidate versions, authorization, and preconditions for ready nodes
+    dispatch at most P pairwise conflict-free nodes
+    await the next typed terminal result
+    append result and any committed effect to the durable effect ledger
+
+    if result is accepted by all outgoing dependency predicates:
+        release newly ready descendants
+    else:
+        cancel unscheduled descendants
+        request cancellation of running descendants
+        compensate committed effects when policy requires it
+        reconcile every effect=unknown before permitting retry
+
+return complete result map, effect ledger, and unresolved-effect set
 ```
-legal schedule:  all read-only calls may run concurrently
-                 mutating calls execute in proposal order, serially
-                 dependent calls cannot appear in one turn (data flows via next prediction)
-```
-
-Two classical hazards remain *within* the legal schedule, and engineers should name them:
-
-- **Stale read under concurrency:** a read racing a same-turn write (read-only batch + mutation in one proposal) can observe pre- or post-write state; the serialized-writes rule bounds but does not eliminate read/write interleaving ambiguity. Where the distinction matters, force it across turns: write, then read in the next turn — paying a turn for a guarantee, the agentic version of a memory barrier.
-- **Cross-run interference:** two *agents* (or an agent and a human) sharing a workspace re-create every multi-writer anomaly at session scale; nothing in the per-turn scheduler addresses it. Chapter 9's conflicting-edits problem and Chapter 10's worktree isolation are the treatments; the per-turn discipline here is necessary, nowhere near sufficient.
 
 ## 5. Evidence and efficiency
 
-The turn-accounting numbers give the regimes their economic weight: across Harness-Bench configurations at fixed tasks, mean turns ranged **5.0 to 22.6** and mean tokens 68.7K–175.1K, with the top-scoring harness among the *leanest* — "longer trajectories alone do not determine performance" [HB Table 2, §4.2]. Turn count is dependency structure made visible: configurations that batch independent reads and flatten dependencies spend fewer turns for equal or better outcomes. Parallelism optimizes *within-turn* latency; dependency-flattening optimizes *turn count*; the second dominates in practice because each turn carries full model-inference latency plus context growth [CAL context accumulation].
+Across Harness-Bench configurations, mean turns ranged from **5.0 to 22.6** and mean tokens from 68.7K to 175.1K; longer trajectories alone did not determine performance [HB Table 2, §4.2]. This establishes that turn and token counts vary materially, but it does not isolate batching, dependency structure, model latency, tool latency, or other harness differences as the cause. A workload-specific scheduler study should replay the same call DAG under serial, metadata-only, and conflict-aware bounded-parallel schedulers, measuring wall-clock latency, rate-limit errors, stale-version conflicts, duplicated effects, cancellation delay, and cost.
 
 ## 6. Failure modes
 
-- **Write–write races via mislabeled tools:** a custom tool marked `readOnlyHint` that actually mutates state re-admits lost updates past the scheduler [CAL]; the annotation is a safety contract and deserves review as one.
-- **Read-batch staleness** (§4.1): conclusions drawn from a parallel read batch that a same-turn write invalidated.
-- **Dependency mis-prediction:** the model proposes "independent" calls that are semantically dependent (edit file A, run tests that compile A) — schedule-legal, logically racy. The serialized-write rule saves the common cases; the residual is a verification problem (did the test run see the edit?), caught by result-consistency checks [HB §3.4 Consistency].
-- **Turn-fragmentation:** the inverse inefficiency — issuing one call per turn where a batch or a program was available; k× the latency and context growth for no safety gain (§3.3's aggregation escape).
+- **Incomplete or false metadata:** a custom tool marked `readOnlyHint` mutates state, or declared resource sets omit aliases and indirect effects. Metadata is a safety contract and must be generated from or checked against implementation behavior where possible [CAL].
+- **Version-skewed reads:** concurrent calls observe different snapshots or a read races a committed write. Require version tokens or snapshot/transaction semantics when consistency matters.
+- **Hidden dependencies:** the model proposes calls as independent even though one consumes another's effect. The scheduler must derive dependencies from declared bindings and resource conflicts rather than natural-language confidence.
+- **Turn fragmentation:** issuing one call per model turn where a verified batch or declared dataflow was available. The incremental latency must be measured; it is not automatically $k$ times end-to-end latency because calls and inference costs vary.
 - **Unbounded fan-out:** parallel read storms (dozens of concurrent fetches) as a cost and rate-limit event; concurrency needs the same budgeting as any other resource (Chapter 14's admission control).
-- **Speculation improvised without a framework** (§3.4): effectful "probably-needed" calls fired ahead of decisions — this is just acting before deciding, and every Chapter 1 reversibility rule applies at full force.
+- **Cancellation leakage:** fail-fast returns while already-started operations continue or commit; a cancelled parent is not evidence that child effects stopped.
+- **Ambiguous retry:** a timeout is retried without reconciling whether the first effect committed, producing duplicates unless an idempotency key binds both attempts.
+- **Partial-success loss:** successful independent results are discarded because one sibling failed, or downstream code consumes them without recording that the batch is incomplete.
 
 ## 7. Limitations
 
-- The scheduling semantics cited are those of two specific interfaces [OAT; CAL]; other runtimes make other choices, and portability of concurrency behavior across SDKs is exactly the kind of semantic difference Chapter 4's portability topic warns about.
-- The stale-read analysis in §4 is engineering reasoning over documented rules **[derived]**; the sources do not publish anomaly frequencies. Measure yours: same-turn read/write co-occurrence rate is computable from the run record.
+- The emission semantics [OFC] and executor heuristic [CAL] belong to different layers and specific interface versions. Other runtimes make different choices; portability requires conformance tests, not name matching.
+- The conflict-DAG model assumes sufficiently accurate resource and effect annotations. Dynamic resource discovery, hidden transitive effects, external writers, and non-transactional services can invalidate the graph.
 - No source quantifies the latency gain of parallel reads or the cost of turn-fragmentation on agentic suites; §5's turn-count spread is consistent with, but does not isolate, the effect.
 
 ## 8. Production implications
 
-1. **Trust the type system, not the proposer:** concurrency eligibility comes from tool contracts (`readOnlyHint`, mutation typing) [CAL]; audit custom-tool annotations as safety-critical metadata.
-2. **Flatten dependencies deliberately:** batch independent reads; move dependency chains into executed code where the environment allows [CAH §2.2]; treat turns as the expensive unit.
-3. **Force turn boundaries where read-after-write consistency matters** (§4.1) — pay the turn, take the guarantee.
-4. **Budget concurrency** like any resource: fan-out caps, rate-limit awareness, and per-turn call ceilings alongside `max_turns` [CAL].
-5. **Watch turns-per-task as a standing efficiency metric** [HB Table 2]; rising fragmentation and rising fan-out are both visible there before they are visible in cost reports.
-6. **Do not improvise speculation.** Until an interface offers speculative execution with cancellation semantics, restrict "work ahead" to reads you would have issued anyway — and say so in the design doc (§3.4's gap is citable).
+1. **Compile proposals into a validated DAG:** resolve resource aliases, add data/control/conflict edges, reject cycles or unresolved bindings, and apply a bounded worker pool.
+2. **Make effect semantics explicit:** idempotency key, expected version, isolation level, timeout, cancellation behavior, and compensation owner for every effectful tool.
+3. **Obtain consistency from the resource contract:** transaction or version tokens, not model-turn boundaries. Reconcile `effect=unknown` before retry.
+4. **Propagate cancellation and preserve partial results:** stop unscheduled descendants, request cancellation of running nodes, await terminal states within a deadline, and record every committed effect.
+5. **Use generated programs selectively:** move dependencies into code only when sandboxing and evidence preserve authorization, observability, and recovery [CAH §2.2].
+6. **Measure scheduler value:** report work, span, realized parallelism $T_1/T_P$, queue time, conflict rate, rate-limit failures, cancellation latency, and duplicate-effect incidents alongside turn count.
+7. **Contain speculation:** allow it only within a stated cost/data-access budget and an isolation, deferred-commit, idempotency, or compensation boundary appropriate to the effect.
 
 ## 9. Connections
 
@@ -81,8 +133,10 @@ The turn-accounting numbers give the regimes their economic weight: across Harne
 
 ## Sources
 
-[OAT] OpenAI, Tools guide (`parallel_tool_calls`) — https://developers.openai.com/api/docs/guides/tools
+[OFC] OpenAI, Function calling guide (`parallel_tool_calls`, client execution, multiple-call strict-mode interaction) — https://developers.openai.com/api/docs/guides/function-calling
 [CAL] Claude Agent SDK, "How the agent loop works" (parallel execution rules, readOnlyHint, turn structure, context accumulation) — https://code.claude.com/docs/en/agent-sdk/agent-loop
+[CCRS] Bernstein, Hadzilacos, and Goodman, *Concurrency Control and Recovery in Database Systems*, 1987 — https://www.microsoft.com/en-us/research/people/philbe/book/
+[BRENT] Brent, "The Parallel Evaluation of General Arithmetic Expressions," JACM 1974 — https://doi.org/10.1145/321812.321815
+[SAGA] Garcia-Molina and Salem, "SAGAS," SIGMOD 1987 — https://doi.org/10.1145/38713.38742
 [CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §2.2, §3.1.3
 [HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.4, §4.2, Table 2
-[BEA] Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents

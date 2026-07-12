@@ -1,106 +1,260 @@
-# Topic 6 — Task Horizon, Branching Factor, Observability, Reversibility, and Failure Cost
+# Topic 6 — Task Horizon, Effective Branching, Observability, Verifiability, Reversibility/Recoverability, and Failure Cost
 
 ## 1. Problem and objective
 
-Topic 5 gave coordinates for the *system*; this topic gives coordinates for the *task*. Reliability is a property of the match between the two. The five task axes here — horizon, branching factor, observability, reversibility, failure cost — are the ones for which the sources provide either direct measurements or explicit design machinery. The objective: for each axis, state what it is, how it moves the failure probability or the failure *consequence*, and what evidence pins the direction and rough magnitude of the effect.
+Topic 5 profiles the deployed system; this topic profiles the task and environment. Reliability depends on their interaction. The task properties here are horizon, action branching, state observability, outcome verifiability, reversibility/recoverability, and failure cost. The objective is to define each property operationally, identify what it can and cannot predict, and derive only the probability expressions justified by stated assumptions.
+
+These properties are not validated independent latent factors. They are an engineering profile: useful for experiment design and control selection when definitions, units, and task distributions are explicit.
 
 ## 2. Intuition first
 
-Why can a frontier agent configuration score 82% on Terminal-Bench and under 10% on the hardest tier of Agents' Last Exam [ALE §1]? Not because the underlying skills vanish. Because the second benchmark's tasks are *longer* (more sequential steps that must all go right), *wider* (GUI + CLI + domain software rather than a terminal alone), *murkier* (state spread across applications the agent must actively probe), and scored against *deliverables* rather than intermediate progress. Task difficulty for agents is not one number; it is a shape. Systems fail when their agency shape (Topic 5) is mismatched to the task shape.
+The same Codex with GPT-5.5 configuration is reported at 82% on Terminal-Bench, below 50% on ALE's easiest tier, and under 10% on ALE's hardest tier [ALE §1]. The benchmark contrast is evidence of distribution dependence, not a causal decomposition. ALE differs in task length, applications, interfaces, domains, deliverables, and scoring. A task profile turns those differences into hypotheses that matched experiments can test.
 
-## 3. The five axes
+## 3. Task and environment properties
 
-### 3.1 Horizon — how many decisions must compose
+### 3.1 Horizon — how many dependent decisions must compose
 
-The number of dependent decision steps between start and verified completion. The controlling evidence is the chapter's founding result: prompted LLM agents at **94.0%** on base MiniWoB tasks fall to **24.9%** on 50 compositional CompWoB tasks; finetuned models from **85.4%** to **54.8%**; degradation worsens when instruction *order* changes [CompWoB]. ALE extends the point to economically real work: tasks are admitted only if they constitute "an end-to-end deliverable that would take an expert substantial time, rather than only a few UI operations" — the distinction "between a workflow and an action" [ALE §2.1] — and at that granularity average full pass rates fall **below 1%** [ALE abstract]. Horizon is the axis along which capability claims die; Topic 8 gives it its mathematics.
+Horizon is a distribution over the number of decision events required for verified completion, not merely the number of natural-language instructions or model turns. Report at least:
 
-### 3.2 Branching factor — how many actions are available per step
+- total event/action horizon $n$;
+- model-mediated decision horizon $n_{\mathrm{model}}$;
+- number and length of dependency chains;
+- number of verified milestones;
+- empirical horizon distribution across task instances.
 
-The effective size of the admissible action set at each decision point. LLM-agent action spaces are heterogeneous by construction — language, tool calls, planning, environment control, communication [MEM §2.1] — and every added tool or interface widens the per-step choice. ALE's task surface is "by construction, a superset of GUI-only benchmarks like OSWorld and CLI-only benchmarks like Terminal-Bench," demanding GUI interaction interleaved with shell scripting, code execution, and file manipulation — "the union of capabilities that existing benchmarks test in isolation" [ALE §1]. Branching interacts multiplicatively with horizon: the trajectory space grows roughly as (branching)^(horizon) **[derived — combinatorial statement, assumptions: independent per-step choice sets]**, which is why "add more tools" is not a free capability upgrade (Chapter 5 documents when it is a downgrade).
+CompWoB combines two to eight MiniWoB subtasks into 50 compositional tasks. Prompted agents average **94.0%** on the base suite and **24.9%** on the compositional suite; transferred models average **85.4%** and **54.8%** respectively [CompWoB]. These aggregate rates are not matched per-step probabilities and cannot be compared to $0.94^n$ for one chosen $n$. They establish a compositional-generalization gap. Estimating a horizon effect requires per-composition base rates, composition length/type, and uncertainty.
 
-### 3.3 Observability — how much relevant state is visible per observation
+ALE admits end-to-end professional deliverables rather than a few interface operations [ALE §2.1]. On its hardest tier, the average full pass rate across mainstream harness/backbone configurations is below 1% [ALE abstract]. This is consistent with difficult long-horizon execution but does not isolate horizon from domain, interface, or scoring differences.
 
-Topic 3's axis, viewed from the task side: how much of the success-relevant state s_t the interface exposes per o_t, and at what cost. Tasks range from fully-inspectable (a repo with a test suite — code is an "executable, inspectable, and stateful medium" [CAH §1]) to probe-expensive (multi-application GUI state, where each look costs a screenshot-parse cycle). Harness-Bench operationalizes the difference between *checkable* and *unchecked*: tasks are admitted only under **Oracle-checkability** — success verifiable "by deterministic checks or a specified rubric" [HB §3.2]; low task observability without an oracle forces rubric/judge grading, which imports grader noise into the measurement itself.
+### 3.2 Nominal, viable, and effective branching
 
-### 3.4 Reversibility — whether wrong actions can be undone
+Raw tool count is not the task's branching factor. Distinguish:
 
-The axis with the sharpest engineering encoding. The reference runtime *types actions by it*: "read-only tools (like Read, Glob, Grep...) can run concurrently. Tools that modify state (like Edit, Write, and Bash) run sequentially" [CAL]; the permission ladder auto-approves edits before arbitrary commands [CAL]. Reversibility is also what sandboxing manufactures: Harness-Bench's offline sandboxes ensure "each model–harness pair starts from the same initial state" [HB §3.2] — every action reversible by environment reset. Production reversibility is bought with mechanisms: version control for edits, idempotency for API calls, staged deploys for releases. Where it cannot be bought (sent emails, external financial actions), the axis is pinned at zero and everything must move to approval gates.
+$$
+B_t^{\mathrm{nominal}}
+\mathrel{=}
+|\mathcal A_t^{\mathrm{allowed}}|,
+$$
 
-### 3.5 Failure cost — what a wrong outcome costs
+$$
+B_t^{\mathrm{viable}}
+\mathrel{=}
+\left|
+\{a\in\mathcal A_t^{\mathrm{allowed}}:
+\operatorname{preconditions}(a,s_t,\mathcal Q)\}
+\right|.
+$$
 
-Independent of failure *probability*: the loss when it happens. The sources encode it two ways. Harness-Bench makes one class of failure lexically dominant — Security ∈ {0,1} multiplies the whole score, so "unauthorized access, secret exposure, or forbidden actions" cost everything regardless of completion quality [HB §3.4]. The system cards scale controls by consequence class: high-consequence domains (cyber, bio) get capability classifiers and gated release tiers rather than mere monitoring [FSC Exec. Summary; G56 §1]. The general rule both encode: as failure cost rises, controls move from *statistical* (accept x% error) to *structural* (make the error impossible or non-executable).
+$B_t^{\mathrm{viable}}$ is latent when $s_t$ is unknown, so an evaluator may estimate it from an oracle or annotated task graph. A policy-specific diagnostic is entropy-based effective branching, with $0\log 0$ defined as zero:
 
-## 4. Formalization: the risk functional
+$$
+B_t^{\mathrm{effective}}
+\mathrel{=}
+\exp\!\left(
+-\sum_{a\in\mathcal A_t}
+\pi(a\mid c_t)\log\pi(a\mid c_t)
+\right).
+$$
 
-For a task with horizon n, per-step success probabilities p_i, per-step detect-and-recover probability d_i, and consequence C for undetected failure:
+For a uniform policy over $b$ actions this equals $b$; for a concentrated policy it is smaller. In a regular depth-$n$ tree where every node at depth $t$ has the same branching $B_t$, the number of root-to-leaf action sequences is:
 
-```
-E[loss] ≈ C · P(undetected failure)
-P(task success, no verification)     = ∏ᵢ pᵢ                        (multiplicative decay)
-P(undetected failure, with checks)   = ∏ᵢ pᵢ terms replaced by
-                                       per-step (1 − pᵢ)(1 − dᵢ) leakage
-```
+$$
+N_{\mathrm{paths}}
+\mathrel{=}
+\prod_{t=1}^{n}B_t,
+$$
 
-**[derived — assumptions: step independence and binary step outcomes; CompWoB shows real composition degrades *worse* than this bound (Topic 8), so treat ∏pᵢ as optimistic.]** The functional makes the axes' roles explicit: horizon sets n; branching and observability move p_i (more choices, less visibility → lower per-step correctness); reversibility moves d_i's *usefulness* (detection without undo is a smaller consolation); failure cost sets C. Agency configuration (Topic 5) must be chosen so that E[loss] stays under the task's tolerance — that is the whole matching problem in one line.
+and reduces to $B^n$ only for constant branching. In a non-regular tree, one must sum over actual leaves; a product of average branching factors need not equal the path count. This is a combinatorial count, not a probability model. Adding a tool increases nominal branching but can improve success by exposing a missing capability or reduce it through selection confusion; direction must be measured.
 
-## 5. The matching matrix
+### 3.3 State observability — evidence available during action
 
-| Task shape | Appropriate response (with mechanism) |
-|---|---|
-| Long horizon, verifiable subgoals | Decompose; verify per-milestone (ALE's "milestone-based checks" [ALE §3]); checkpoint state (Ch. 10) |
-| Long horizon, no intermediate checks | Redesign the task before deploying an agent — this shape is where <1% pass rates live [ALE] |
-| High branching | Constrain the action set per phase (minimal tool enablement [HB Table 1]); route/plan explicitly (Ch. 8) |
-| Low observability | Buy observations (probe tools) or instruments (tests as oracles [CAH]); refuse rubric-only success criteria where a deterministic check is constructible [HB §3.2] |
-| Low reversibility | Approval gates on the irreversible subset (permission rules, `PreToolUse` hooks blocking calls [CAL]); sandbox rehearsal first [HB §3.2] |
-| High failure cost | Structural controls: binary gates [HB §3.4], authority tiering [FSC], barrier chains [G56 §1] |
+State observability concerns how $\Omega$ exposes decision-relevant environment state:
 
-## 6. Measurement: profiling a task before building for it
+- coverage of required state variables;
+- observation noise, truncation, and latency;
+- acquisition cost in time, tokens, or external calls;
+- freshness under environment drift;
+- whether the agent can choose informative probes.
 
-A task profile is five numbers/labels obtainable *before* any agent is built:
+A repository with deterministic state queries may be highly observable for one task and poorly observable for another whose requirements are implicit. GUI pixels can expose visible state while hiding application semantics; a DOM can expose structure while omitting server-side effects. Observability is task-relative, not a fixed property of a modality.
 
-1. **Horizon estimate:** expert count of dependent steps to deliverable (ALE's expert task-sourcing pipeline does precisely this via advisory-committee workflow mapping [ALE §2.2–2.3]).
-2. **Branching estimate:** size of the minimal tool/action set that covers the workflow (not the maximal one available).
-3. **Observability label:** oracle-checkable / rubric-checkable / human-judgment-only — Harness-Bench's admission criterion applied as triage [HB §3.2].
-4. **Reversibility inventory:** the exact list of irreversible action types the task requires; each list item is a future approval gate.
-5. **Failure cost class:** consequence tier per failure type, with the security-class failures flagged for lexical (not weighted) treatment [HB §3.4].
+### 3.4 Outcome verifiability — evidence that success criteria hold
 
-Benchmarks that skip this profiling produce the pathology ALE documents: a field where "benchmark victories have accumulated faster than measurable transformation in core industries" [ALE §1] because the measured tasks and the valuable tasks have different shapes.
+Verifiability is distinct from observability. A task can expose rich intermediate state but lack a complete success oracle, or expose little state while providing a definitive final validator.
+
+Use a verification profile:
+
+- deterministic oracle;
+- partial deterministic checks plus rubric;
+- versioned human/LLM rubric;
+- judgment-only outcome;
+- no operationally specified success criterion.
+
+Harness-Bench requires deterministic checks or a specified rubric [HB §3.2]; ALE requires deterministic checking or an unambiguous rubric tied to observable artifacts [ALE §2.1]. These are task-admission and measurement properties. They do not make the acting environment fully observable.
+
+### 3.5 Mutation, reversibility, and recoverability
+
+Mutation answers whether an action changes state. Reversibility asks whether a known inverse or snapshot restoration can return the relevant system to an acceptable prior state. Recoverability includes compensation when exact reversal is impossible.
+
+For action class $c$, report:
+
+- probability of successful rollback or compensation;
+- time to restore;
+- maximum data loss or recovery-point objective;
+- scope restored atomically;
+- residual external effects;
+- whether rollback has been tested under injected failure.
+
+The reference runtime's parallelization of read-only tools and serialization of mutating tools [CAL] is a concurrency policy, not a reversibility type system. A serialized email send can be irreversible; a mutating repository edit can be cheaply reverted. Sandboxed benchmark reset provides experiment-level repeatability [HB §3.2], but production rollback depends on the actual external systems.
+
+### 3.6 Failure cost — loss distribution, not one severity label
+
+Failure cost is the consequence conditional on a failure mode, independent of the mode's probability. Represent expected loss over mutually exclusive outcome classes $f\in\mathcal F$:
+
+$$
+\mathbb E[L]
+\mathrel{=}
+\sum_{f\in\mathcal F}
+P(F=f)\,C_f.
+$$
+
+For heavy-tailed or safety-critical domains, the mean is insufficient; report critical-failure probability, worst credible loss, and a tail measure such as conditional value at risk where defensible. Harness-Bench's binary Security component makes specified security violations lexically dominant in its diagnostic score [HB §3.4]. System cards use stronger access and release controls for high-consequence capability classes [FSC; G56]. These are examples of consequence-sensitive policy, not proof that structural controls make every high-cost failure impossible.
+
+## 4. Reliability expressions
+
+Let $S_u$ be the event that step $u$ satisfies the condition required for the task to remain on a successful path. The exact chain rule is:
+
+$$
+P(S_1,\ldots,S_n)
+\mathrel{=}
+\prod_{u=1}^{n}
+P(S_u\mid S_1,\ldots,S_{u-1}).
+$$
+
+If step-success events are independent with $P(S_u)=p_u$, this becomes the **independence baseline**:
+
+$$
+P(\text{task success})
+\mathrel{=}
+\prod_{u=1}^{n}p_u.
+$$
+
+It is neither an upper nor a lower bound without assumptions about dependence. Shared state, heterogeneous task difficulty, recovery, and positive or negative correlations can move observed success in either direction.
+
+For a separate simple independent-step model, let $p_u=P(S_u)$, let $d_u=P(\text{error detected}\mid S_u^c)$, and define an undetected-error event $U_u$. Then:
+
+$$
+q_u=P(U_u)=(1-p_u)(1-d_u).
+$$
+
+The exact probability of at least one undetected error is:
+
+$$
+P\!\left(\bigcup_{u=1}^{n}U_u\right)
+\mathrel{=}
+1-
+\prod_{u=1}^{n}
+\left[
+1-P\!\left(
+U_u
+\mid
+U_1^c,\ldots,U_{u-1}^c
+\right)
+\right].
+$$
+
+If the $U_u$ are independent, this reduces to:
+
+$$
+P(\text{at least one undetected error})
+\mathrel{=}
+1-\prod_{u=1}^{n}(1-q_u).
+$$
+
+$\prod_u q_u$ would be the probability that every step leaks an undetected error, not that at least one does. Detection also does not imply recovery. A separate parameter
+
+$$
+r_u
+\mathrel{=}
+P(\text{state restored and retry admissible}\mid
+\text{error detected at }u)
+$$
+
+is required before crediting a detected error as non-fatal. Topic 8 develops bounded retries and checkpoint recovery; this topic does not assume unlimited fresh attempts.
+
+The task profile enters these probabilities empirically:
+
+- horizon determines how many conditional factors appear;
+- viable/effective branching and observability are candidate predictors of the conditional $p_u$, not guaranteed monotonic causes;
+- verifiability affects measurable detection power $d_u$;
+- reversibility/recoverability affects $r_u$ and residual loss;
+- failure mode determines $C_f$.
+
+## 5. Matching task properties to controls
+
+| Task property | Engineering response | Required evidence |
+|---|---|---|
+| Long dependency chains with checkable subgoals | Decompose, validate milestones, checkpoint verified state | Matched horizon curve and checkpoint recovery tests |
+| Long horizon without intermediate verification | Reduce scope, add instrumentation, constrain authority, or require human review | Explicit residual-risk argument; do not infer safety from final self-report |
+| High viable/effective branching | Phase-specific tool scopes, typed plans, routing, or search | Branching estimate and ablation showing no lost necessary actions |
+| Low state observability | Add probes, state APIs, freshness/version metadata | Coverage and stale-observation fault injection |
+| Weak outcome verifiability | Tighten specification, use multiple evidence channels, retain human adjudication | Judge agreement, rubric error, and unresolved-claim rate |
+| Low reversibility/recoverability | Rehearsal, transaction/compensation design, approval, blast-radius limits | Tested rollback/compensation and residual-effect inventory |
+| High or heavy-tailed failure cost | Structural constraints, narrow authority, independent monitoring, staged rollout | Upper confidence bound on critical failures and safety-case evidence |
+
+## 6. Measurement: profile before architecture selection
+
+A useful task profile records distributions and definitions, not five unsupported scalar scores:
+
+1. **Horizon:** event and model-mediated horizon distributions, dependency depth, and milestone locations.
+2. **Branching:** nominal tool/action count, oracle-estimated viable actions, and policy-effective branching under the evaluated configuration.
+3. **Observability:** required-state coverage, latency, noise, truncation, freshness, and acquisition cost.
+4. **Verifiability:** oracle/rubric type, coverage of success criteria, false acceptance/rejection, and judge agreement.
+5. **Reversibility/recoverability:** per-action rollback probability, restore time, data loss, compensation coverage, and residual effects.
+6. **Failure cost:** named failure modes, consequence distribution, critical threshold, and tail metric.
+
+Estimates should carry task-sample size and uncertainty. Expert estimates are hypotheses; validate them through traces, fault injection, and matched task families where feasible.
 
 ## 7. Failure modes
 
-- **Horizon underestimation:** the demo is three steps; the deployment is thirty. CompWoB's 94→24.9 [CompWoB] is the canonical measurement of what that mistake costs.
-- **Branching bloat:** enabling every available tool "to be safe" — widening the denominator of every step decision. Harness-Bench's minimal-enablement protocol [HB Table 1] is the countermeasure stated as method.
-- **Observability theater:** an agent that *reports* progress in fluent prose on a task whose true state it cannot check — mechanism 4 of Topic 3, weaponized by low task observability. The false-completion examples [FSC §2.3.3] are this failure at frontier capability.
-- **Reversibility assumptions crossing environments:** rehearsed-in-sandbox behavior shipped to production, where reset does not exist [HB §3.2 is explicit that sandbox reversibility is a benchmark construction].
-- **Cost-blind optimization:** tuning aggregate success while the rare expensive failure dominates E[loss]; the multiplicative Security gate [HB §3.4] exists because averaging hides exactly this.
+- **Horizon substitution:** using turns as steps even when one turn contains several actions or asynchronous events.
+- **Aggregate composition arithmetic:** comparing one aggregate base success rate with a heterogeneous compositional suite as though all compositions had identical length and component difficulty.
+- **Branching bloat or over-pruning:** enabling everything increases nominal choice; restricting too aggressively removes necessary actions. Use ablations.
+- **Observability/verifiability conflation:** treating a final oracle as proof the policy had adequate state while acting, or treating rich observations as proof the deliverable is correct.
+- **Mutation/reversibility conflation:** assuming serialized writes are irreversible or version-controlled writes are automatically safe.
+- **Detection without restoration:** a validator catches failure after an external side effect that cannot be undone.
+- **Cost-blind averaging:** high mean success conceals a rare critical failure.
 
 ## 8. Limitations
 
-- The five axes are not independent (low observability usually lowers reversibility in practice: you can't undo what you didn't notice), and the risk functional's independence assumptions are known-optimistic [CompWoB].
-- Horizon and branching estimates from experts are noisy; ALE's multi-gate review pipeline (first-pass review, engineer dry-runs, final QC committee [ALE §2.3]) is what serious estimation costs — most teams will run a cheaper, rougher version and should say so in their reports.
-- Failure cost is organization-relative; no source offers a portable scale, and we do not invent one.
+- The properties interact. Better probes can increase horizon; stronger verification can add mutating setup; checkpoints can add persistent state.
+- Viable branching depends on latent state and task semantics, so evaluator estimates can be wrong.
+- Expert horizon and consequence estimates are domain-dependent and should not be compared across organizations without common definitions.
+- The probability equations are structural identities or explicitly assumed baselines. They do not predict production success until $p_u$, $d_u$, dependence, recovery, and loss are measured on the target distribution.
+- Benchmark contrasts such as ALE versus Terminal-Bench identify distribution sensitivity but do not isolate one task property.
 
 ## 9. Production implications
 
-1. **Profile the task before selecting the architecture.** The five-number profile (§6) is an afternoon of work and determines the entire control stack; skipping it means discovering the profile in production.
-2. **Shorten the effective horizon by design:** verifiable milestones convert one n-step task into k tasks of length n/k with detection between them — the single highest-leverage reliability move this chapter offers (formal treatment in Topic 8).
-3. **Spend branching budget deliberately:** per-phase tool scoping, not global enablement [HB Table 1; CAL's per-agent tool restriction].
-4. **Let reversibility set the approval topology:** gates go exactly on the irreversible inventory items, nowhere else — gates everywhere is how approval fatigue defeats the control.
-5. **Report the profile with the result.** A success rate without (horizon, branching, observability, reversibility, cost) context is not interpretable; ALE vs Terminal-Bench (82% vs <50%/<10% for the *same configuration* [ALE §1]) is the field-scale proof.
+1. **Profile task and environment before selecting control allocation.**
+2. **Measure conditional decay, not an unmatched aggregate product.** Construct matched families by horizon and composition type.
+3. **Separate observation, verification, and recovery budgets.** A test can detect an error without revealing all state or restoring it.
+4. **Place approval and structural controls by action-specific expected and tail risk.** Reversibility matters, but high-impact reversible actions can still require gating.
+5. **Report the full profile with results.** A success rate is not transferable without task distribution, configuration, horizon unit, evidence model, and consequence definition.
 
 ## 10. Connections
 
-- Topic 5 × Topic 6 is the matching problem; Topic 10 solves it in the minimal-agency direction.
-- Topic 8 develops axis 1 (horizon) into the error-accumulation calculus; Topic 3 developed axis 3.
-- Chapter 5 engineers axis 2 (tool surfaces); Chapter 10 engineers axis 1 (checkpointing); Chapter 12 owns axes 4–5 (approval policy by consequence and reversibility); Chapter 13 builds task specifications that carry this profile explicitly.
+- Topic 5 supplies the system-side configuration profile; this topic supplies task/environment measurements.
+- Topic 8 extends the conditional-success, detection, and recovery calculus.
+- Chapter 5 engineers action surfaces and branching; Chapter 10 implements checkpoints; Chapter 12 designs authority by consequence; Chapter 13 develops task sampling and statistical inference.
 
 ## Sources
 
+[POMDP] Kaelbling, Littman, and Cassandra, "Planning and Acting in Partially Observable Stochastic Domains," *Artificial Intelligence* 101, 1998 — https://doi.org/10.1016/S0004-3702(98)00023-X
 [CompWoB] Furuta et al., TMLR — https://deepmind.google/research/publications/46840/
-[ALE] Agents' Last Exam, arXiv:2606.05405 (`Knowledge_source/2606.05405v2.pdf`) abstract, §1, §2.1–2.3, §3
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.2, §3.4, Table 1
-[MEM] Memory survey, arXiv:2512.13564 (`Knowledge_source/2512.13564v2.pdf`) §2.1
-[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §1
+[ALE] Agents' Last Exam, arXiv:2606.05405 (Knowledge_source/2606.05405v2.pdf) abstract, §1, §2.1–2.3
+[HB] Harness-Bench, arXiv:2605.27922 (Knowledge_source/2605.27922v1.pdf) §3.2, §3.4, Table 1
+[MEM] Memory survey, arXiv:2512.13564 (Knowledge_source/2512.13564v2.pdf) §2.1
+[CAH] Code as Agent Harness, arXiv:2605.18747 (Knowledge_source/2605.18747v1.pdf) §1
 [CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) Exec. Summary, §2.3.3
-[G56] GPT-5.6 Preview System Card (`Knowledge_source/gpt-5-6-preview.pdf`) §1
+[FSC] Claude Fable 5 & Mythos 5 System Card (Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf) Exec. Summary
+[G56] GPT-5.6 Preview System Card (Knowledge_source/gpt-5-6-preview.pdf) §1

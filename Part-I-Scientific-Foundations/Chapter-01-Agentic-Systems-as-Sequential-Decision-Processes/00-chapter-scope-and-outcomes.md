@@ -8,11 +8,11 @@
 
 Three independent measurements, from three independent groups, define the empirical starting point of this book. None of them is flattering to the field.
 
-**Measurement 1 — Composition destroys local competence.** DeepMind's CompWoB study (Furuta, Matsuo, Faust, Gur; TMLR) built 50 compositional web-automation tasks out of base MiniWoB tasks that agents already solve. Prompted LLM agents (gpt-3.5-turbo, gpt-4) succeed on **94.0%** of base tasks but only **24.9%** of their compositions. Finetuned/transferred models fall from **85.4%** to **54.8%**; the purpose-built HTML-T5++ reaches 95.2% base but only 61.5% zero-shot compositional. Performance degrades further when task-instruction *order* changes. If step success were independent, two composed 94%-tasks would predict ~88% joint success; the observed 24.9% means composition introduces failure modes that do not exist in the parts. Local task success cannot be extrapolated to workflows. [CompWoB]
+**Measurement 1 — Base-task competence does not transfer cleanly to composition.** DeepMind's CompWoB study (Furuta, Matsuo, Faust, Gur; TMLR) built 50 compositional web-automation tasks containing two to eight MiniWoB subtasks. Prompted LLM agents (gpt-3.5-turbo, gpt-4) average **94.0%** success on the base-task suite but only **24.9%** on the compositional suite. Finetuned/transferred models fall from **85.4%** to **54.8%**; the purpose-built HTML-T5++ reaches 95.2% base and 61.5% zero-shot compositional success. Performance degrades further when instruction order changes. These are aggregate rates over different task mixtures, so $0.94^n$ is not a statistically valid prediction for the reported 24.9%. The defensible conclusion is narrower and still important: high base-task success does not identify compositional success, and composition length, instruction complexity, state coupling, and task mix require matched measurement. [CompWoB]
 
-**Measurement 2 — The harness moves the number as much as the model.** Harness-Bench (arXiv:2605.27922) fixed 106 sandboxed tasks, budgets, timeouts, and evaluators, then varied only the execution harness across 8 model backends — 5,194 trajectories total. Aggregate scores ranged from **52.4 (OpenClaw)** to **76.2 (NanoBot)**: a **23.8-point gap attributable to the harness configuration alone**, under the same model pool and task suite. The authors' conclusion, which this book adopts as an axiom: *agent capability must be reported at the model–harness configuration level, not attributed to the base model.* [HB §4.2]
+**Measurement 2 — The harness materially changes measured performance.** Harness-Bench (arXiv:2605.27922) fixed 106 sandboxed tasks, budgets, timeouts, and evaluators across a full factorial of 6 configurable harnesses and 8 model backends — 5,194 trajectories including a separately reported Codex reference. Harness-aggregated scores ranged from **52.4 (OpenClaw)** to **76.2 (NanoBot)**: a **23.8-point configuration-level spread** under the same model pool and task suite. This aggregate contrast is not a per-model causal effect for every backend, but it directly supports the authors' reporting rule: *agent capability must be reported at the model–harness configuration level, not attributed to the base model.* [HB §4.1–4.2]
 
-**Measurement 3 — Frontier agents fail at economically real work.** Agents' Last Exam (arXiv:2606.05405) collected 1,490 task instances across 55 professional subdomains from 250+ industry experts, anchored to the O*NET/SOC occupational taxonomy. The strongest configuration measured (Codex with GPT-5.5) scores 82% on Terminal-Bench yet **below 50% on ALE's easiest tier and under 10% on the hardest**; most mainstream agents, including Claude Code, record **near-zero pass rates at the hardest difficulty**, and the average full pass rate across configurations is **below 1%**. [ALE §1]
+**Measurement 3 — Frontier agents remain unreliable on economically grounded work.** Agents' Last Exam (arXiv:2606.05405) collected 1,490 task instances across 55 professional subdomains from 250+ industry experts, anchored to the O*NET/SOC occupational taxonomy. The strongest configuration measured (Codex with GPT-5.5) scores 82% on Terminal-Bench yet **below 50% on ALE's easiest tier and under 10% on the hardest**; most mainstream agents, including Claude Code, record **near-zero pass rates at the hardest difficulty**, where the average full pass rate across mainstream harness/backbone configurations is **below 1%**. [ALE abstract, §1]
 
 The gap between these numbers and the marketing vocabulary of "autonomous agents" is the subject matter of this book. This chapter builds the formal apparatus needed to reason about that gap precisely.
 
@@ -20,13 +20,13 @@ The gap between these numbers and the marketing vocabulary of "autonomous agents
 
 ## 2. Chapter scope
 
-This chapter treats an agentic system as a **sequential decision process**: a stochastic policy (the model) embedded in a control layer (the harness) interacting with a partially observable environment through typed actions, producing a trajectory that an external evaluator scores. Everything else in the book — tools, memory, orchestration, evaluation, security — is an elaboration of one component of this process.
+This chapter treats an agentic system as a **constrained partially observable sequential decision process**: a sampled model policy embedded in a control layer, acting through typed interfaces in an environment whose complete state is generally latent. The process produces a latent trajectory and an observable execution trace; an external evaluator estimates task utility and constraint compliance from the evidence available in that trace and the resulting artifacts. Everything else in the book — tools, memory, orchestration, evaluation, security — elaborates one component of this process. [POMDP; CMDP]
 
 In scope:
 
 - Operational definitions separating agents, workflows, assistants, automation, and autonomous systems (Topic 1)
-- The formal interaction model: state, observation, action, transition, termination, reward (Topics 2–3)
-- The three-layer policy decomposition: model policy, harness policy, deterministic application policy (Topic 4)
+- The formal interaction model: state, observation, action, transition, termination, task utility, constraints, runtime feedback, and post-hoc evaluation (Topics 2–3)
+- The typed control decomposition: deterministic application controller, pre/post-model harness mechanisms, and model proposal policy (Topic 4)
 - Dimensions of agency and of task difficulty (Topics 5–6)
 - The capability–reliability separation and error accumulation (Topics 7–8)
 - Architecture-selection decision rules (Topics 9–10)
@@ -51,20 +51,21 @@ Readers are assumed to have:
 | **Agent** | Model + Harness (the pair, never the model alone) | [HB §3]: "Agent = Model + Harness" |
 | **Workflow** | System where LLMs and tools are orchestrated through predefined code paths | [BEA] |
 | **Agent (Anthropic's behavioral sense)** | System where the LLM dynamically directs its own processes and tool usage, maintaining control over how it accomplishes tasks | [BEA] |
-| **Environment** | Everything external to the agent: task workspace, files, local services, live systems; the evaluator is also external | [HB §3] |
-| **Trajectory** | τ = (s₀, o₀, a₀, s₁, o₁, a₁, …, s_T) — the full execution record | [MEM §2.1] |
+| **Environment** | The external system $\mathcal E$: workspace, files, services, users, and other processes; the evaluator is external to the acting policy | [HB §3] |
+| **Latent trajectory** | $\tau^\star=(s_0,x_0,\mathbf a_0,s_1,\ldots,x_{T_{\mathrm{end}}},\mathbf a_{T_{\mathrm{end}}},s_{T_{\mathrm{end}}+1})$: the generative state–observation–action sequence, including environment states that may not be observable | [MEM §2.1; POMDP] |
+| **Observable trace** | $\hat\tau$: the persisted evidence available to engineering and evaluation — requests, responses, tool calls/results, workspace deltas, timestamps, usage, and validator outputs | [HB §3.3] |
 | **Turn** | One round trip: model output including tool calls → tool execution → results fed back | [CAL] |
-| **Run** | R = Run(M, H, E, T): one complete task attempt by model M under harness H in environment E on task T | [HB §3.3] |
-| **Evaluator / Judge** | External scorer J producing TaskScore = Eval(R; J) from workspace state, trace, usage statistics, validator outputs | [HB §3.3–3.4] |
+| **Run** | $R=\operatorname{Run}(M,H,\mathcal E,\mathcal Q)$: one complete attempt on task specification $\mathcal Q$ | [HB §3.3] |
+| **Evaluator / Judge** | External scorer $J$ producing $\operatorname{TaskScore}=\operatorname{Eval}(\hat\tau,\text{artifacts};J)$; it is a measurement instrument, not necessarily a runtime reward | [HB §3.3–3.4] |
 
 ## 5. System boundary
 
-The unit under analysis is the tuple **(M, H, E, T, J)**. The boundary cuts:
+The unit under analysis is the tuple **$(M,H,\mathcal E,\mathcal Q,J)$**. The boundary cuts:
 
 - **Inside:** model inference, harness control flow, tool execution, context/memory management, termination logic.
 - **Outside:** the environment's ground-truth state, the evaluator, the human principal, and the training process that produced M.
 
-This boundary follows Harness-Bench's evaluation setting (task, initial sandbox state, budget, timeout, and evaluator fixed; harness varied) [HB §3.1] and is load-bearing: most published agent numbers blur it, which is precisely why they fail to predict production behavior.
+This boundary follows Harness-Bench's evaluation setting (task, initial sandbox state, budget, timeout, and evaluator fixed; harness varied) [HB §3.1]. Measurements that omit one or more elements of the tuple are harder to reproduce and transfer because the omitted element can change the induced behavior distribution.
 
 ## 6. Exclusions
 
@@ -78,15 +79,15 @@ This boundary follows Harness-Bench's evaluation setting (task, initial sandbox 
 After this chapter you should be able to:
 
 1. Classify any proposed system as automation / workflow / assistant / agent using the decision tests in Topic 1, and defend the classification.
-2. Write down the formal interaction model (Ψ, O, π, τ) for a concrete system and identify which component each engineering artifact implements (Topic 2).
-3. Predict the direction of reliability change when task horizon, branching, observability, reversibility, or failure cost shifts (Topic 6).
-4. Compute a compositional success bound from per-step measurements and explain why observed degradation (CompWoB) is worse than the independence bound (Topic 8).
-5. Justify — with measurements, not taste — when a deterministic workflow must replace an agent (Topics 9–10).
-6. Report agent performance at the (M, H) configuration level with the measurement framework of Topic 12.
+2. Write down the formal interaction model $(\rho_0,\Psi,\Omega,\pi,\kappa,U,\mathbf C,\tau^\star,\hat\tau)$ for a concrete system and identify which component each engineering artifact implements (Topic 2).
+3. Profile task horizon, effective branching, state observability, outcome verifiability, reversibility/recoverability, and failure cost; state which reliability hypotheses require measurement (Topic 6).
+4. Compute an independence baseline from matched per-step measurements, distinguish it from a bound, and quantify conditional composition effects without comparing unmatched aggregate task mixtures (Topic 8).
+5. Justify — with measurements, not taste — when a deterministic workflow is preferred to model-directed control (Topics 9–10).
+6. Report performance for a complete versioned configuration—including model, harness, application policy, decoding settings, budgets, permissions, tool contracts, and evaluator—while retaining $(M,H)$ as the minimum model–harness identity (Topic 12).
 
 ## 8. Source ledger for this chapter
 
-All claims in Chapter 1 trace to the following sources in `Knowledge_source/`:
+Claims in Chapter 1 trace to the following versioned local PDFs or stable external sources. Mutable web documentation should be archived with an access date when used for a release decision:
 
 | Tag | Source | Provenance |
 |---|---|---|
@@ -101,8 +102,13 @@ All claims in Chapter 1 trace to the following sources in `Knowledge_source/`:
 | [FSC] | Anthropic, "System Card: Claude Fable 5 & Claude Mythos 5" (June 9, 2026) | `Claude Fable 5 & Claude Mythos 5 System Card.pdf` |
 | [G56] | OpenAI, "GPT-5.6 Preview System Card" (2026-06-25) | `gpt-5-6-preview.pdf` |
 | [CAL] | Anthropic, Claude Agent SDK — "How the agent loop works" | https://code.claude.com/docs/en/agent-sdk/agent-loop |
+| [POMDP] | Kaelbling, Littman, Cassandra, "Planning and Acting in Partially Observable Stochastic Domains," *Artificial Intelligence* 101 (1998) | https://doi.org/10.1016/S0004-3702(98)00023-X |
+| [CMDP] | Altman, *Constrained Markov Decision Processes* (1999) | Chapman & Hall/CRC |
+| [PASSK] | Chen et al., *Evaluating Large Language Models Trained on Code* (pass@k estimator) | https://arxiv.org/abs/2107.03374 |
+| [WILSON], [MCN], [EFRON], [KM] | Wilson interval, paired-proportion testing, bootstrap inference, and censoring-aware survival estimation | Primary references listed in Topic 12 |
+| [HOLM], [BH], [COHEN] | Family-wise/FDR multiplicity control and inter-rater agreement | Primary references listed in Topic 12 |
 
-**Epistemic rules used throughout:** (i) every quantitative claim carries a source tag; (ii) mathematics that we *derive* (rather than quote) is flagged as **[derived]** and its assumptions stated; (iii) where the literature has no validated construct — e.g., "agency dimensions" — we say so explicitly rather than laundering an engineering rubric into science.
+**Epistemic rules used throughout:** (i) every quantitative claim carries a source tag; (ii) mathematics that we *derive* (rather than quote) is flagged as **[derived]** and its assumptions stated; (iii) an independence product is called a baseline, never a bound, unless a valid inequality is proved; (iv) where the literature has no validated construct — e.g., "agency dimensions" — we say so explicitly rather than laundering an engineering rubric into science; and (v) benchmark associations are not reported as causal mechanisms without an identifying experiment.
 
 ## 9. Chapter map
 
@@ -111,7 +117,7 @@ All claims in Chapter 1 trace to the following sources in `Knowledge_source/`:
 01 boundaries: automation | workflow | assistant | agent | autonomous system
 02 formal interaction model  ──┐
 03 partial observability       ├── the mathematics
-04 three-layer policy stack  ──┘
+04 typed application–harness–model control flow ──┘
 05 agency dimensions         ──┐
 06 task-difficulty dimensions  ├── the design space
 07 capability ≠ reliability    │
@@ -122,4 +128,4 @@ All claims in Chapter 1 trace to the following sources in `Knowledge_source/`:
 12 notation & measurement      ──┘
 ```
 
-Chapter 2 takes the model M apart; Chapter 3 takes the harness H apart. Nothing in either makes sense without the (M, H, E, T, J) decomposition established here.
+Chapter 2 takes the model $M$ apart; Chapter 3 takes the harness $H$ apart. Both rely on the $(M,H,\mathcal E,\mathcal Q,J)$ decomposition established here.

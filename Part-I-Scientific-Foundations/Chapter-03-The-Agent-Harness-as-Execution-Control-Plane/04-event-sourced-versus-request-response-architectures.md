@@ -48,7 +48,7 @@ Neither system is a pure pole. ADK permits dirty reads inside invocations (a req
 **Choose event-sourced (or retrofit its properties) when any of these hold** **[derived — rules ours; anchors cited]**:
 
 1. **Runs outlive processes.** Long-horizon, multi-session work (Chapter 10) needs recovery points that don't depend on a process staying alive; commit-before-continue is the mechanical form of Chapter 10's checkpointing.
-2. **Audit is a requirement, not a nicety.** Regulated actions, Chapter 12's incident forensics, Chapter 1 Topic 12 §3.2's four-evidence rule — all consume the ledger; reconstructing it from a balance architecture after the fact is somewhere between expensive and impossible.
+2. **Audit is a requirement, not a nicety.** Regulated actions, Chapter 12's incident forensics, and Chapter 1's observable-run-record contract ($\hat\tau$ with proposals, admitted/executed actions, $\kappa$ history, usage, workspace snapshots, validator outputs — Topic 12 §4) all consume the ledger; reconstructing it from a balance architecture after the fact is somewhere between expensive and impossible.
 3. **The harness itself is under evolution.** Trace-driven harness improvement runs on structured trajectories — AEGIS's entire loop consumes "the trace store, a structured record of execution events, verifier-scored outcomes, regression signals, and shipped or rejected edits" [HX §4.3]; Evolution-Agent diagnosis attributes failures "to specific harness components" from deep telemetry [CAH §3.5.2]. No ledger, no evolution.
 4. **Multiple consumers need the record:** UI, evaluator, telemetry, and future replays all reading one committed stream beats each tapping the loop ad hoc.
 

@@ -2,112 +2,265 @@
 
 ## 1. Problem and objective
 
-Topic 7 established that composition destroys local competence; this topic supplies the calculus. The objective is a quantitative model of how per-step errors aggregate over a trajectory, calibrated against the one controlled composition experiment in our ledger (CompWoB), and then — the constructive half — the mathematics of what verification, checkpointing, and recovery do to the decay curve. The punchline is worth stating first: **the naive multiplicative model is the *optimistic* bound for unverified execution, and the entire engineering discipline of Parts II–III is a set of devices for beating it.**
+Long tasks fail through conditional, stateful sequences. The correct starting point is therefore the probability chain rule, not an independence approximation. This topic develops:
 
-## 2. Intuition first
+1. an exact conditional-hazard representation of trajectory success;
+2. a careful interpretation of the CompWoB aggregate results;
+3. finite retry equations with detector false positives, false negatives, and rollback failure;
+4. measurement procedures for hazards, detection, recovery, cost, and censoring.
 
-A relay race with 20 handoffs, each 99% clean, finishes clean 82 times in 100. At 95% per handoff, 36 times. At 90%, 12. Nothing about any single runner changed — length alone did the damage. Now add the agentic twist the relay metaphor misses: a fumbled baton in an agent run is not always *dropped visibly*. Often it is carried forward — a wrong file edit, a misremembered constraint, a false "tests passed" — and every subsequent step executes correctly *relative to a corrupted state*. Composed error in agents is less like dropping batons and more like grabbing the wrong baton and running hard.
+The purpose is not to predict a production success rate from one short-task average. It is to identify which quantities must be measured before such a prediction is defensible.
 
-## 3. The baseline model and its empirical violation
+## 2. Exact trajectory decomposition
 
-**Independence baseline.** With per-step success p_i over n dependent steps and no detection/recovery:
+Let $G_t$ be the event that, after stage $t$, the run remains in a valid prefix state: required invariants hold, no unrecovered critical failure has occurred, and the work completed so far is acceptable. The events are nested:
 
-```
-P(success) = ∏ᵢ₌₁ⁿ pᵢ  =  p̄ⁿ (identical steps)
-p̄ = 0.99: n=10 → 0.904   n=50 → 0.605   n=200 → 0.134
-p̄ = 0.95: n=10 → 0.599   n=50 → 0.077   n=200 → ~3·10⁻⁵
-```
+$$
+G_n \subseteq G_{n-1} \subseteq \cdots \subseteq G_0.
+$$
 
-**[derived — assumptions: step independence, binary outcomes, no recovery]**
+Define the conditional stage hazard:
 
-**The violation.** CompWoB provides the calibration point: base-task success 94.0% for prompted agents predicts, under independence, roughly 0.94² ≈ 88% for two-task compositions and ~83% for three. Observed: **24.9%** [CompWoB]. The independence model errs *optimistically* by a factor of ~3.5 at n as small as 2–3. Finetuned models (85.4% base) predict ~73% at n=2 against an observed 54.8% — better, still optimistic. And success degrades further under instruction reordering [CompWoB], which independence says should not matter at all.
+$$
+h_t
+\mathrel{=}
+\Pr\!\left(
+G_t^{\,c}
+\mid
+G_{t-1}
+\right).
+$$
 
-**Why super-multiplicative degradation.** The mechanisms, each traceable to chapter machinery:
+Then the chain rule gives the exact identity:
 
-1. **State contamination:** step k's error alters s or b̂ for all later steps (Topic 3's mechanisms 2 and 4); errors are not independent events but persistent environment features. Code's statefulness makes this explicit — artifacts "persist... within the task execution loop" [CAH §1], carrying mistakes with them.
-2. **Context interference:** composed tasks share one h_t; earlier-task content dilutes and distracts later-task decisions — the reordering sensitivity [CompWoB] is direct evidence, since reordering changes only context layout, not skills.
-3. **Per-step p is not constant:** p_i falls as context fills and the belief state degrades over long runs; the per-step number measured on short episodes overestimates the tail of long ones. (Chapter 10 treats quality decay across extended runs.)
+$$
+\Pr(G_n)
+\mathrel{=}
+\Pr(G_0)
+\prod_{t=1}^{n}
+\Pr(G_t \mid G_{t-1})
+\mathrel{=}
+\Pr(G_0)
+\prod_{t=1}^{n}
+(1-h_t).
+$$
 
-So the honest inequality: **P(success) ≤ ∏ pᵢ for unverified composed execution, with the gap growing in shared-state coupling.** [CompWoB-calibrated; mechanism attribution derived]
+No independence assumption is required. History dependence, shared state, compaction, tool errors, and earlier observations are already represented because each $h_t$ is conditional on reaching stage $t$ with a valid prefix.
 
-## 4. The constructive half: what verification does to the curve
+If one additionally assumes a constant conditional hazard $h_t=h$, then:
 
-Model each step with three outcomes: correct (p), *detected* error (probability (1−p)·d), undetected error ((1−p)·(1−d)), where d is detection power. Detected errors trigger retry at cost but not failure; undetected errors absorb.
+$$
+\Pr(G_n \mid G_0)=(1-h)^n.
+$$
 
-```
-P(eventual step success | retries allowed) = p / (p + (1−p)(1−d))     per step
-P(task success) = [ p / (p + (1−p)(1−d)) ]ⁿ
-d = 0:    reduces to pⁿ                     (no verification)
-d = 1:    → 1 per step                      (perfect detection: only cost grows, not failure)
-p=0.95, d=0.9, n=50:  per-step 0.9948 → task ≈ 0.77   (vs 0.077 unverified: a 10× improvement)
-```
+That homogeneous model is a diagnostic reference line, not a bound. Depending on how task populations and conditional hazards change, an independence-style extrapolation can be optimistic or pessimistic.
 
-**[derived — assumptions: detection independent of error type, unlimited retries, retry draws fresh; real detectors are correlated with error causes, so treat as directional, not predictive]**
+## 3. What CompWoB establishes—and what it does not
 
-The lever is d, and d is *engineered*, not hoped for:
+CompWoB reports 94.0% success on its base MiniWoB tasks for prompted agents and 24.9% on its compositional task set; finetuned/transferred systems and HTML-T5++ also show substantial degradation, and instruction order affects performance [CompWoB].
 
-- **Oracles:** tests, type checkers, deterministic validators — code environments ship native high-d instruments; execution traces and tests "check and refine reasoning" [CAH §1–2]. This is the quantitative reason coding agents lead the reliability league (Chapter 11).
-- **Judged process checks:** Harness-Bench's Robustness score measures "whether the agent handles tool or environment failures" [HB §3.4] — detection-and-recovery behavior, scored.
-- **What self-report contributes to d: approximately zero.** The false-completion catalog [FSC §2.3.3.1–.2] means the model's own "done, verified" is policy output (Topic 2, I4), not a detector. Counting it as d is how teams arrive at production incidents with green dashboards.
+The valid inference is:
 
-**Checkpointing bounds loss, not failure probability.** Segmenting n steps into k verified milestones (ALE's "milestone-based checks" [ALE §3]) converts one length-n bet into k bets of length n/k with recovery points between; failure cost shrinks from restart-everything to restart-one-segment **[derived]**. Chapter 10 implements this.
+- performance on the base-task population does not transport directly to the compositional-task population;
+- composition and ordering materially change the effective decision problem;
+- local success rates are insufficient statistics for end-to-end success.
 
-## 5. Architecture: the accumulation-aware execution loop
+The calculation $0.94^2 \approx 0.884$ is only a hypothetical reference for two independent, exchangeable subevents, each with success probability 0.94. The reported 94.0% is an aggregate over base tasks; the compositions vary in length and difficulty; and their subevents share instructions, state, and policy context. Those assumptions are not established. Therefore $0.94^2$ is neither a valid prediction nor an upper bound for the CompWoB aggregate, and the ratio $0.884/0.249$ should not be interpreted as an identified “composition penalty.”
 
-The canonical loop already contains the hooks; the design question is whether they are used:
+Instruction-order sensitivity supports the narrower claim that the policy is not invariant to semantically related reorderings [CompWoB]. It is consistent with context interference, but it does not isolate context interference from other order-dependent mechanisms.
 
-```
-per turn:   act → observe result → (verify?) → update state
-            └ tool errors surface in results — the model reacts to failures [CAL]
-            └ hooks (PostToolUse) audit outputs deterministically [CAL]
-per phase:  milestone check against oracle/rubric → checkpoint or rollback
-per run:    budget backstops (max_turns, max_budget_usd) bound the cost of
-            a failure spiral even when detection fails [CAL]
-```
+## 4. Conditional mechanisms of accumulation
 
-Sequencing matters: state-mutating tools already run serialized [CAL], which means each mutation *could* be followed by a verification read before the next — the runtime permits per-step d > 0; harness policy decides whether to pay for it.
+The hazard representation accommodates several mechanisms without pretending they are independent:
 
-## 6. Measurement
+1. **State contamination.** An accepted but wrong action changes the environment on which later actions condition.
+2. **Belief divergence.** The environment remains correct while the model's reconstructed state becomes stale or unsupported.
+3. **Context and order effects.** The same facts presented in a different sequence change the policy distribution.
+4. **Changing stage difficulty.** Later stages may have higher hazards because the context is larger, budgets are depleted, or remaining steps are intrinsically harder.
+5. **Shared-cause failures.** One missing dependency, poisoned observation, or invalid plan can raise several later hazards simultaneously.
+6. **Selection on survival.** Runs reaching late stages are not a random sample of initial runs; their task mix and prior trajectories differ.
 
-1. **Estimate p̄ from short-horizon evals, then test the *decay*, not the point.** Run matched task families at n ∈ {1, 2, 4, 8, …} (the CompWoB construction: compose tasks you already measure at base [CompWoB]); plot log P(success) vs n. Slope steeper than n·log p̄ quantifies your coupling penalty.
-2. **Measure d directly:** inject known faults (failing tool responses, corrupted files) and count detections — Harness-Bench's robustness rubric formalizes the scoring side [HB §3.4].
-3. **Separate detected-and-recovered from undetected-and-lucky** in traces; the two look identical in outcome metrics and mean opposite things about your system. Trace-level evidence collection (final workspace, execution trace, usage statistics, validator outputs [HB §3.3]) exists precisely to make this distinction observable.
-4. **Track turn counts per task** [HB Table 2 reports turns per harness]; rising median turns at flat success is early warning of accumulating inefficiency — retries eating the gains of detection.
+These mechanisms are hypotheses to test with traces and interventions. Aggregate success rates alone do not identify their contributions.
 
-## 7. Failure modes
+## 5. Finite retry and verification mathematics
 
-- **Verification theater:** checks that share the failure mode of the step they check (the model re-reading its own summary; a judge grading fluency). d measured against injected faults, not assumed from check *count*.
-- **Recovery that contaminates:** a "retry" that acts on the already-corrupted state repeats the error deterministically. Recovery must restore a known-good checkpoint, not re-prompt over the wreckage (Chapter 10's restart-safe execution).
-- **Error laundering across milestones:** a milestone check that passes on partial truth converts an accumulating error into a *certified* one; downstream trust in the certificate makes it worse than no check. Milestone oracles need the same integrity screening as task oracles [HB §3.2].
-- **Compounding via memory:** an undetected error consolidated into 𝓜_t by the evolution operator E [MEM §2.2] outlives even the run — cross-task accumulation, Chapter 7's contamination problem.
-- **The long-tail spiral:** repeated failed retries burning budget; the backstop subtypes (`error_max_turns`, `error_max_budget_usd` [CAL]) are the harness admitting detection failed — instrument how often they fire; each firing is an accumulation event that beat your detectors.
+Consider one stage with retry allowance $N_{\mathrm{retry}}\in\{0,1,\ldots\}$. The maximum number of attempts is:
 
-## 8. Limitations
+$$
+N_{\mathrm{att}}=N_{\mathrm{retry}}+1.
+$$
 
-- All closed-form results here are **[derived]** with stated assumptions the data already violate in the optimistic direction (§3); use them for design *direction* and back-of-envelope bounds, never as predicted success rates.
-- CompWoB is one environment (web automation) at small n with 2023–24-era models; it is our only controlled composition measurement, which is itself a statement about the field's evaluation gaps. ALE's <1% at long horizon [ALE] is consistent with severe accumulation but confounds horizon with domain difficulty — it cannot separate the two.
-- The verification model assumes retry independence; agentic retries condition on the same context and weights, so effective d and retry freshness are both lower than the formulas assume. Measured decay curves (§6) trump the algebra.
+For an attempt made from a valid pre-stage state, define:
+
+- $p=\Pr(\text{candidate is correct})$;
+- $\alpha=\Pr(\text{detector rejects}\mid\text{candidate is correct})$, the false-positive rate;
+- $\delta=\Pr(\text{detector rejects}\mid\text{candidate is wrong})$, the detection sensitivity;
+- $\beta=\Pr(\text{rollback restores a valid retry state}\mid\text{candidate is rejected})$.
+
+The four mutually exclusive per-attempt probabilities are:
+
+$$
+p_{\mathrm{acc}}=p(1-\alpha)
+$$
+
+for accepted success,
+
+$$
+p_{\mathrm{miss}}=(1-p)(1-\delta)
+$$
+
+for an undetected wrong candidate,
+
+$$
+p_{\mathrm{retry}}
+=\beta\left[p\alpha+(1-p)\delta\right]
+$$
+
+for a rejected candidate followed by a safe retry, and
+
+$$
+p_{\mathrm{rollback}}
+=(1-\beta)\left[p\alpha+(1-p)\delta\right]
+$$
+
+for a rejected candidate whose rollback does not restore the retry invariant. They satisfy $p_{\mathrm{acc}}+p_{\mathrm{miss}}+p_{\mathrm{retry}}+p_{\mathrm{rollback}}=1$.
+
+Under stationary attempt probabilities and conditionally fresh retry draws after successful rollback:
+
+$$
+\Pr(\text{stage success by attempt }N_{\mathrm{att}})
+\mathrel{=}
+p_{\mathrm{acc}}
+\sum_{j=0}^{N_{\mathrm{att}}-1}p_{\mathrm{retry}}^j
+\mathrel{=}
+\begin{cases}
+p_{\mathrm{acc}}
+\dfrac{1-p_{\mathrm{retry}}^{N_{\mathrm{att}}}}
+{1-p_{\mathrm{retry}}},
+& p_{\mathrm{retry}}\neq 1,\\
+0, & p_{\mathrm{retry}}=1,
+\end{cases}
+$$
+
+$$
+\Pr(\text{undetected stage failure})
+\mathrel{=}
+p_{\mathrm{miss}}
+\sum_{j=0}^{N_{\mathrm{att}}-1}p_{\mathrm{retry}}^j,
+$$
+
+$$
+\Pr(\text{rollback failure})
+\mathrel{=}
+p_{\mathrm{rollback}}
+\sum_{j=0}^{N_{\mathrm{att}}-1}p_{\mathrm{retry}}^j,
+$$
+
+and
+
+$$
+\Pr(\text{retry exhaustion})
+=p_{\mathrm{retry}}^{N_{\mathrm{att}}}.
+$$
+
+The four probabilities sum to one. The expected number of attempts is:
+
+$$
+\mathbb{E}[N_{\mathrm{used}}]
+\mathrel{=}
+\sum_{j=0}^{N_{\mathrm{att}}-1}p_{\mathrm{retry}}^j
+\mathrel{=}
+\begin{cases}
+\dfrac{1-p_{\mathrm{retry}}^{N_{\mathrm{att}}}}
+{1-p_{\mathrm{retry}}},
+& p_{\mathrm{retry}}\neq 1,\\
+N_{\mathrm{att}}, & p_{\mathrm{retry}}=1.
+\end{cases}
+$$
+
+### Edge cases
+
+- $N_{\mathrm{att}}=1$: no retry; stage success is $p_{\mathrm{acc}}$.
+- $\delta=0$: wrong candidates are never detected; retries occur only through false positives.
+- $\alpha=1$: every correct candidate is rejected; success is impossible unless the detector policy changes.
+- $\beta=0$: no rejected attempt is safely retryable; verification may detect errors but cannot recover.
+- $p=0$: retries cannot create capability; stage success remains zero.
+- $p_{\mathrm{retry}}=1$: every attempt is rejected and safely rolled back; the process exhausts its retry budget with probability one.
+
+The stationary formula must not be used when retries reuse a corrupted state, the detector adapts, prompts change, or failure causes persist. In the nonstationary case, let $p_{\mathrm{acc},\ell}$ and $p_{\mathrm{retry},\ell}$ be the conditional accepted-success and safe-retry probabilities on attempt $\ell$. Then:
+
+$$
+\Pr(\text{stage success by }N_{\mathrm{att}})
+\mathrel{=}
+\sum_{\ell=1}^{N_{\mathrm{att}}}
+p_{\mathrm{acc},\ell}
+\prod_{u=1}^{\ell-1}p_{\mathrm{retry},u}.
+$$
+
+This form makes the required conditioning explicit.
+
+## 6. Checkpointing and recovery
+
+A checkpoint is useful only if it defines a recoverable state. A valid checkpoint requires:
+
+- an atomic or otherwise well-defined snapshot boundary;
+- durable provenance for the state and validator results;
+- a rollback operation whose success is measured;
+- idempotency or deduplication for externally visible effects;
+- a rule for effects that cannot be rolled back.
+
+Checkpointing can reduce expected rework and consequence by localizing recovery. It can also improve success if it enables safe retries. It does not automatically reduce failure probability: a checkpoint that records corrupted state or cannot reverse external effects can certify and preserve the failure.
+
+If stage $t$ has conditional accepted-success probability $p_t^{\mathrm{stage}}$ after its finite retry policy, then the exact valid-prefix probability remains:
+
+$$
+\Pr(G_n \mid G_0)
+\mathrel{=}
+\prod_{t=1}^{n}
+p_t^{\mathrm{stage}},
+$$
+
+where each $p_t^{\mathrm{stage}}=\Pr(G_t\mid G_{t-1})$ is conditional and may differ by stage and history.
+
+## 7. Measurement protocol
+
+1. **Estimate conditional hazards, not only final success.** Define stage boundaries and report the number entering each stage, failures by cause, and the conditional hazard estimate.
+2. **Use repeated runs on matched tasks.** Separate task heterogeneity from run-to-run variability.
+3. **Measure detector sensitivity and false-positive rate.** Inject known faults and known-good controls; report $\delta$ and $\alpha$ with confidence intervals.
+4. **Test rollback empirically.** After each rejected mutation, verify hashes, versions, external side effects, and idempotency records; estimate $\beta$.
+5. **Record all terminal outcomes.** Accepted success, undetected failure discovered later, rollback failure, retry exhaustion, timeout, and budget exhaustion are distinct outcomes.
+6. **Treat budget termination as censoring when appropriate.** If a run is stopped before the event of interest is observed, report time-to-success or time-to-failure with a censoring-aware estimator rather than counting every censored run as the same failure mode [KM].
+7. **Compare policies at matched budgets.** Verification changes both quality and cost. Report success, critical failures, attempts, tokens, latency, and cost jointly.
+
+## 8. Failure modes in verification design
+
+- **Shared-failure detector:** the checker uses the same evidence and model failure mode as the candidate generator.
+- **False-positive retry churn:** correct work is repeatedly discarded, increasing cost and the chance of later regression.
+- **Retry without rollback:** a new sample is drawn over corrupted state; the retry equations no longer apply.
+- **Ambiguous external effects:** a timeout occurs after a remote action may have committed; retry without idempotency can duplicate the effect.
+- **Certified corruption:** a weak milestone check records an invalid state as the recovery point.
+- **Budget-dependent selection:** only easy runs reach verification, making detector performance appear better than it is.
 
 ## 9. Production implications
 
-1. **Every added step is a reliability tax; price it.** The first question for any workflow extension: what does this do to n, and what oracle covers it?
-2. **Buy detection before capability.** Moving p̄ 0.95→0.97 at n=50 yields ~0.22; adding d=0.9 at p̄=0.95 yields ~0.77 **[derived, §4]**. Verification engineering dominates model upgrades on long tasks — and it is cheaper.
-3. **Never accept self-reported completion as a stop condition** on tasks with n > a handful; require verified task state [FSC §2.3.3; Chapter 10's stop-condition rule].
-4. **Checkpoint at the milestones you can oracle**, and only there — un-oracled checkpoints are laundering points (§7).
-5. **Watch the backstop-firing rate** as a standing SLO input: it is the count of accumulation events your detection layer missed.
+1. Replace “per-step accuracy” dashboards with conditional stage hazards and terminal-cause counts.
+2. Bound retries explicitly; unlimited-retry formulas hide cost, nonstationarity, and exhaustion.
+3. Require measured detector sensitivity, false-positive rate, and rollback success before crediting a verification loop.
+4. Compare capability improvements and verification improvements at matched end-to-end budgets; neither dominates universally.
+5. Put idempotency and effect reconciliation ahead of retry for state-changing tools.
 
 ## 10. Connections
 
-- Supplies the mechanism for Topic 7's §5.2 and the mathematics for Topic 6's horizon axis.
-- Topic 9's case for deterministic workflows is this topic's algebra applied: deterministic steps have p ≈ 1 and d irrelevant, so every step moved from π_M to π_D shortens the *stochastic* horizon.
-- Chapter 10 (checkpointing, recovery, verified stop conditions) implements §4; Chapter 11's verifier stack is the d-engineering catalog; Chapter 13's pass^k and survival-curve metrics are §6 industrialized.
+- Topic 7 defines the repeated-run reliability estimand that the conditional hazards compose.
+- Topic 9 uses measured hazards and costs to compare workflow and agent architectures.
+- Topic 10 treats verification, rollback, and authority as separate decision dimensions rather than a single autonomy rung.
+- Topic 12 standardizes repeated-run, paired, censoring-aware reporting.
 
 ## Sources
 
-[CompWoB] Furuta et al., TMLR — https://deepmind.google/research/publications/46840/
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.2–3.4, Table 2
-[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §1–2
-[CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[MEM] Memory survey, arXiv:2512.13564 (`Knowledge_source/2512.13564v2.pdf`) §2.2
-[ALE] Agents' Last Exam, arXiv:2606.05405 (`Knowledge_source/2606.05405v2.pdf`) §1, §3
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §2.3.3
+[CompWoB] Furuta et al., “Exposing Limitations of Language Model Agents in Sequential-Task Compositions on the Web,” TMLR — https://deepmind.google/research/publications/46840/
+[HB] Harness-Bench, arXiv:2605.27922 (Knowledge_source/2605.27922v1.pdf), §3.2–3.4, Table 2
+[CAH] Code as Agent Harness, arXiv:2605.18747 (Knowledge_source/2605.18747v1.pdf), §1–2
+[CAL] Claude Agent SDK, “How the agent loop works” — https://code.claude.com/docs/en/agent-sdk/agent-loop
+[MEM] Memory in the Age of AI Agents, arXiv:2512.13564 (Knowledge_source/2512.13564v2.pdf), §2.2
+[KM] Kaplan and Meier, “Nonparametric Estimation from Incomplete Observations,” JASA 53(282), 1958 — https://doi.org/10.1080/01621459.1958.10501452

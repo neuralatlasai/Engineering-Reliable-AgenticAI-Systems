@@ -13,15 +13,15 @@
 ### Chapter 1 — Agentic Systems as Sequential Decision Processes
 
 1. Agent, workflow, assistant, automation, and autonomous-system boundaries
-2. Formal interaction model: observation, latent state, action, transition, reward, termination
+2. Formal interaction model: observation, latent state, action, transition, objective, and termination
 3. Partially observable environments and belief-state approximation
 4. Model policy versus harness policy versus deterministic application policy
 5. Agency dimensions: autonomy, environmental reach, persistence, adaptivity, and authority
-6. Task horizon, branching factor, observability, reversibility, and failure cost
-7. Capability–reliability separation: why benchmark competence does not imply operational correctness
+6. Task horizon, effective branching, observability, verifiability, reversibility/recoverability, and failure cost
+7. Capability–reliability separation: estimands, evidence, and operational qualification
 8. Error accumulation across composed tasks
 9. When deterministic workflows dominate agents
-10. Minimal-agent principle: use the least autonomous architecture that satisfies the task
+10. Minimal-agent principle: evidence-constrained architecture selection
 11. Agentic-system taxonomy for conversational, transactional, coding, research, browser, and embodied agents
 12. Scientific notation and measurement framework used throughout the book
 
@@ -38,13 +38,13 @@ The chapter must begin with empirical limitations: DeepMind reported a sharp deg
 5. Tool-call generation as constrained structured prediction
 6. Parallel, sequential, speculative, and dependent tool calls
 7. Structured outputs, schema adherence, constrained decoding, and semantic validity
-8. Uncertainty estimation: calibrated confidence, abstention, self-consistency, and verifier disagreement
+8. Uncertainty estimation: calibration, abstention, self-consistency, and verifier disagreement
 9. Model-native tool use versus harness-implemented control flow
 10. Multimodal perception–action loops: text, image, audio, browser, desktop, and robotics
 11. Model selection by horizon, tool accuracy, latency, cost, and risk—not aggregate benchmark rank
-12. Capability routing, fallback models, escalation, and heterogeneous model portfolios
+12. Capability routing, fallback, escalation, and heterogeneous model portfolios
 13. Fine-tuning versus context engineering versus deterministic control
-14. Failure mechanisms: hallucinated state, premature completion, plan drift, reward hacking, and evaluation awareness
+14. Failure mechanisms: unsupported state, premature completion, goal drift, specification gaming, and evaluation-conditioned behavior
 
 DeepMind’s work supplies the broader sequential-decision, world-model, embodied-agent, and evaluation perspective; provider APIs supply the executable tool-use semantics. [Google DeepMind research](https://deepmind.google/research/), [OpenAI tool interface](https://developers.openai.com/api/docs/guides/tools)
 

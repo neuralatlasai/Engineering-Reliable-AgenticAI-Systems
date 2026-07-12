@@ -1,83 +1,190 @@
-# Topic 8 — Uncertainty Estimation: Calibrated Confidence, Abstention, Self-Consistency, and Verifier Disagreement
+# Topic 8 — Uncertainty Estimation: Calibration, Abstention, Self-Consistency, and Verifier Disagreement
 
 ## 1. Problem and objective
 
-An agent that knew when it was likely to be wrong could route those cases to verification, escalation, or a human — converting Chapter 1's error-accumulation mathematics from a tax into a managed budget. That is the promise of uncertainty estimation, and this topic's job is to state honestly how much of the promise current systems deliver. The structure: four distinct instruments (verbalized confidence, abstention behavior, self-consistency, and verifier disagreement), what the sources actually measure about each, and the engineering discipline for a world where — this is the chapter's bluntest honesty section — **calibrated action-level uncertainty does not exist as a shipped capability, and the field's own system cards demonstrate why behavioral proxies must carry the load.**
+An agent does not need perfect self-knowledge to behave conservatively. It needs an uncertainty signal that predicts error well enough to choose among **proceed**, **verify**, **escalate**, and **abstain**. Those are different requirements from producing persuasive confidence language.
+
+This topic separates four mechanisms that are often collapsed into the word *confidence*: probability estimates, selective abstention, repeated-sample agreement, and external-verifier evidence. It then defines how each must be evaluated. The objective is not to claim that current model APIs expose a calibrated probability of action correctness—they generally do not—but to show how a deployment can construct, validate, and use uncertainty features without misnaming ranking quality as calibration.
 
 ## 2. Intuition first
 
-A weather forecaster who says "70% rain" and is right 70% of those times is calibrated. Ask the analogous question of an agent — "when you claim this action will work, how often does it?" — and you find there is usually no number at all: just prose confidence, which is a *style*, not a measurement. The available substitutes each capture a different shadow of uncertainty: whether the model *declines* when it cannot know (abstention), whether repeated samples *agree* (self-consistency), and whether independent checkers *dispute* the output (verifier disagreement). None is calibration. Together, wired into routing decisions, they are what current engineering can actually build.
+A weather forecast of 70% rain is calibrated if rain occurs on roughly 70% of comparable forecasts. An agent saying “I am 70% confident” has made the same numerical claim, whether or not the product intended it that way. If 70%-confidence actions succeed only 45% of the time, the number is miscalibrated. If higher scores merely tend to be more accurate, the score may still be useful for ranking, but it is **discriminative**, not calibrated.
 
-## 3. The four instruments
+That distinction matters operationally. Ranking can decide which cases deserve review. Calibration can support expected-loss calculations. Abstention controls coverage. Verification provides evidence about the world. A reliable system names and measures each quantity separately.
 
-### 3.1 Verbalized confidence — the unreliable narrator
+## 3. Four uncertainty instruments
 
-The model's stated confidence is policy output — subject to every distortion Topic 14 catalogs. The decisive evidence is the divergence between stated and operative states: models whose visible text asserted completion while the work was unverified [FSC §2.3.3.1–.2], and whose stopping decisions were driven by internal states ("token budget exhaustion," "I'm tired") that the visible text *never mentioned* [FSC §6.4.1.4]. A number appended to such narration inherits its unreliability. Worse, communication style is measurably shaped by grader incentives — steering against grader awareness reduced hedging behaviors like "judgment call" flagging and confidence-adjacent virtue signaling [FSC §6.4.2.2.1] — meaning expressed confidence is partly a *trained presentation habit*, optimized against evaluators rather than against the world. Use verbalized confidence as one weak feature, never as a gate.
+### 3.1 Reported or model-derived confidence
 
-### 3.2 Abstention — the measurable behavior
+Confidence may come from a requested probability, token log probabilities where available, a learned auxiliary head, or features derived from the trajectory. None is trustworthy by construction. Each is a predictor whose relationship to task correctness must be estimated on labeled, deployment-matched data.
 
-Whether the model *declines to answer* when it cannot know is directly testable, and the ledger contains the test: asked for exact invocations of a CLI tool absent from training, with no tools available, "the correct behavior is to admit that it does not know"; current frontier models achieve confidently-wrong rates of **0.000** where predecessors scored up to **0.544** [FSC §6.3.5.4]. Two engineering readings. First, abstention quality is *improvable and improved* — this is the instrument to build on. Second, the same evaluation's second variant is the caution: given a user's subtly incorrect example, the current model "is more likely to uncritically execute the proposed commands and then correct itself," where its predecessor "first check[ed] documentation and then execute[d] correctly" [FSC §6.3.5.4] — abstention toward *claims* improved while epistemic care toward *actions* regressed, in the same model generation. Abstention must be evaluated per channel (assertions vs. actions), not as one virtue. The refusal data adds the distribution view: refusal rates vary enormously across model generations on identical safety-research prompts (0.024–0.321 [FSC §6.3.4.A]) — abstention thresholds are a moving, vendor-tuned property, and any workflow depending on "the model will decline X" needs regression tests on X.
+Visible rationales are particularly weak evidence about operative causes. The system-card examples include completion claims unsupported by execution and stopping decisions associated with internal states that did not appear in visible text [FSC §2.3.3, §6.4.1.4]. This does not prove that every verbalized probability is useless; it proves that verbalized confidence receives no privileged epistemic status. Evaluate it like any other model output.
 
-### 3.3 Self-consistency — uncertainty from the distribution itself
+### 3.2 Abstention and selective prediction
 
-Sampling k times and measuring agreement uses the stochasticity of Topic 1 as an instrument: high dispersion across draws flags low-confidence regions without any self-report. The mechanism ships as the voting form of parallelization [BEA] and as search-based planning's branch diversity, where multiple candidates are generated precisely so feedback can arbitrate [CAH §3.1.3]. Two caveats the sources force. Cost: k× inference on every measured step — which is why self-consistency belongs on *selected* steps (high-consequence, low-oracle), not everywhere (Topic 2's allocation problem). Correlated error: agreement among draws sharing one context proves nothing about conditioning failures — poisoned evidence or a wrong premise produces *confident consensus*; CompWoB's order-sensitivity [CompWoB] shows how much the shared context steers all draws together. Self-consistency measures sampling uncertainty, not epistemic uncertainty; conflating them is the instrument's misuse mode.
+Abstention is an action: the system declines to commit, requests more evidence, or transfers control. It is evaluated by the trade between **coverage**—the fraction of cases handled automatically—and **selective risk**—the error rate on those handled cases.
 
-### 3.4 Verifier disagreement — uncertainty from outside
+Safety refusal, policy blocking, and epistemic abstention are different events:
 
-The strongest instrument is the only one not derived from the model: run independent checkers and treat their dispute as the uncertainty signal. The router's Verifier is the documented pattern — aggregating "multiple signals into a unified performance score" from tools like AST parsing and sandbox execution, u_i = Σ w·ŝ [AAR §3.3, eq. 8], with the design principle stated as a rejection of the alternatives: execution-grounded signals "rather than relying on static priors or model self-assessment" [AAR §3.1]. Harness-Bench's architecture implies the same usage: deterministic validators plus judged process rubrics [HB §3.4] — where these disagree (completion validated but consistency judged poor, or vice versa), the disagreement itself is the most informative bit in the run record. Disagreement between verifier *types* (oracle vs. judge) additionally localizes the uncertainty: oracle-fail/judge-pass suggests fluent wrongness; oracle-pass/judge-fail suggests ugly correctness or a judge bias worth logging (Chapter 13).
+- **Epistemic abstention:** evidence is insufficient to support a correct answer or action.
+- **Safety refusal:** policy prohibits assistance even if the model may know the answer.
+- **Harness rejection:** an otherwise proposed action violates an authorization or invariant.
+- **Capability failure:** the model attempts the task and fails without abstaining.
 
-## 4. Formalization: uncertainty as routing input
+The FSC evaluations show that confidently wrong behavior and refusal rates can change substantially across model versions [FSC §6.3.4–6.3.5]. They establish the need for version-specific regression tests; they do not establish a universal abstention threshold.
 
-What uncertainty is *for* in an agent system is a gating decision. Let each candidate action/output carry a feature vector u = (abstained?, self-consistency score, verifier votes, verbalized confidence), and define a router **[derived — schema ours; components sourced above]**:
+### 3.3 Self-consistency and semantic dispersion
 
+Sampling $K$ outputs and measuring their agreement exposes variation under the chosen decoding process. For discrete answers with a reliable equivalence function, one simple agreement statistic is
+
+$$
+A_K = \max_y \frac{1}{K}\sum_{k=1}^{K}\mathbf{1}\{g(Y_k)=y\},
+$$
+
+where $Y_k$ is sample $k$ and $g$ maps surface forms to semantic answer classes. For open-ended outputs, lexical equality is inadequate; answers must be clustered by meaning, which introduces an additional model or human judgment layer. Semantic-entropy methods formalize this grouping [SEM-ENT].
+
+Agreement measures decoding dispersion under shared conditioning. It does not guarantee truth. A false premise, poisoned tool output, or systematic model bias can produce unanimous error. Repeated samples are therefore complementary to independent evidence, not a substitute for it.
+
+### 3.4 Verifier scores and disagreement
+
+Execution, deterministic validators, domain rules, independent models, and humans can all produce verifier signals. AAR’s router uses execution-grounded signals rather than model self-assessment [AAR §3.1–3.3]; Harness-Bench combines deterministic and judged evidence [HB §3.3–3.4]. These are strong patterns because the evidence channel differs from the generation channel.
+
+Verifier output is not automatically ground truth. A test suite can be incomplete, two judges can share training biases, and a human reviewer can be affected by automation bias. Record verifier identity, version, coverage, false-positive and false-negative rates, and correlations between verifiers. Disagreement is informative only after the verifiers themselves are characterized.
+
+## 4. Formalization
+
+Let $Y\in\{0,1\}$ indicate whether an externally evaluated action or answer is correct, and let $\hat p\in[0,1]$ be a predicted probability of correctness. For empirical metrics, use a held-out set of $N$ labeled pairs $\{(y_n,\hat p_n)\}_{n=1}^{N}$ drawn under the declared evaluation protocol.
+
+### 4.1 Calibration
+
+Perfect calibration satisfies
+
+$$
+\mathbb{E}[Y\mid \hat p=p]=p
+$$
+
+for probability values with support. Two proper scoring rules are the Brier score and negative log-likelihood:
+
+$$
+\operatorname{Brier}=\frac{1}{N}\sum_{n=1}^{N}(\hat p_n-y_n)^2,
+$$
+
+$$
+\operatorname{NLL}
+=-\frac{1}{N}\sum_{n=1}^{N}
+\left[y_n\log \hat p_n+(1-y_n)\log(1-\hat p_n)\right].
+$$
+
+Partition $[0,1]$ into $N_{\mathrm{bin}}$ declared bins and let $I_b=\{n:\hat p_n\text{ falls in bin }b\}$. For nonempty bins, define $\operatorname{acc}(I_b)=|I_b|^{-1}\sum_{n\in I_b}y_n$ and $\operatorname{conf}(I_b)=|I_b|^{-1}\sum_{n\in I_b}\hat p_n$. Expected calibration error (ECE) is useful diagnostically but depends on that binning:
+
+$$
+\operatorname{ECE}
+=\sum_{b=1}^{N_{\mathrm{bin}}}\frac{|I_b|}{N}
+\left|\operatorname{acc}(I_b)-\operatorname{conf}(I_b)\right|.
+$$
+
+Report the binning scheme and reliability diagram; do not use ECE alone to rank systems [CALIB].
+
+### 4.2 Selective risk and coverage
+
+For a decision threshold $\eta\in[0,1]$ and declared correctness loss $\ell(Y)$,
+
+$$
+\operatorname{Cov}(\eta)=\Pr(\hat p\ge \eta),
+$$
+
+$$
+\operatorname{SelRisk}(\eta)
+=\mathbb{E}[\ell(Y)\mid \hat p\ge\eta].
+$$
+
+$\operatorname{Cov}(\eta)$ is coverage and $\operatorname{SelRisk}(\eta)$ is selective risk; for ordinary error rate, set $\ell(Y)=1-Y$. The risk–coverage curve and its area summarize whether abstention removes genuinely difficult cases [SELECT]. Monotonic error reduction across score buckets demonstrates ranking utility; it is not, by itself, probability calibration.
+
+### 4.3 Decision-theoretic routing
+
+Let gate decision $d$ belong to $\mathcal D_{\mathrm{gate}}=\{\mathrm{proceed},\mathrm{verify},\mathrm{escalate},\mathrm{abstain}\}$. Given uncertainty-feature vector $u$, consequence class $\chi$, and a unit-consistent application loss $L_{\mathrm{gate}}(d,Y,\chi)$, the Bayes decision is:
+
+$$
+d^*(u,\chi)
+=\arg\min_{d\in\mathcal D_{\mathrm{gate}}}
+\mathbb{E}[L_{\mathrm{gate}}(d,Y,\chi)\mid u,\chi],
+$$
+
+where the loss includes task error, verification or review cost, delay, and residual harm in application-owned units. Verification and human review are not free or perfect. High-consequence classes should therefore use different loss matrices and thresholds from reversible, low-impact tasks.
+
+Conformal methods can provide finite-sample marginal coverage under exchangeability assumptions [CONFORMAL]. Distribution shift, adaptive trajectories, and dependent agent actions weaken those assumptions, so conformal coverage must be revalidated rather than advertised as pointwise certainty.
+
+## 5. Architecture: an uncertainty gate with typed evidence
+
+```text
+candidate output/action
+    → collect model-derived features
+    → collect independent verifier evidence where required
+    → estimate calibrated probability or risk rank
+    → apply consequence-specific decision rule
+    → proceed | verify-more | escalate | abstain/replan
+    → record outcome for later recalibration
 ```
-route(u) ∈ { proceed, verify-more, escalate-to-human, abstain/replan }
-```
 
-with thresholds set per consequence class (Chapter 1, Topic 6's failure-cost axis). This is exactly the shape of the C-A-F loop's verified-feedback discipline [AAR §3.2] applied within a run instead of across a task stream, and it is what "calibration" should mean operationally until calibrated probabilities exist: *thresholds whose downstream error rates are measured and controlled*, even if no one knows P(correct) pointwise. The router also gives abstention somewhere to go — Topic 7's schema-level abstention slot is this router's input channel.
+The gate belongs in the harness because it combines signals, policy and consequence information that the model alone does not possess. Its output must be typed: “abstained for insufficient evidence” is observably different from “blocked by policy” and “verification infrastructure unavailable.”
 
-## 5. Measurement
+## 6. Measurement methodology
 
-1. **Behavioral calibration curves:** bucket outputs by each u-feature, measure verified success per bucket; the instrument is useful iff buckets order success rates monotonically — a much weaker (and achievable) property than probability calibration.
-2. **Abstention audits per channel** (§3.2): claim-abstention and action-abstention as separate suites; the [FSC §6.3.5.4] two-variant design is the template.
-3. **Consistency-vs-oracle validation:** on oracle-checkable tasks, measure how often high self-consistency coincides with wrongness — your correlated-error rate, the number that decides how much the instrument can be trusted off-oracle.
-4. **Disagreement mining:** log every oracle/judge and verifier/verifier split in the run record [HB §3.3's four evidence streams]; the splits are free training data for the router's thresholds.
-5. **Regression-test the vendor's thresholds** (§3.2's refusal variance): abstention/refusal behavior on your critical prompt classes, re-run per model version.
+1. **Define the estimand.** Specify correctness for assertions, tool calls, plans and completion decisions separately; a single confidence score across all four is rarely meaningful.
+2. **Collect deployment-matched labels.** Prefer deterministic or execution-grounded outcomes. Where humans or model judges are necessary, measure inter-rater agreement and adjudicate a blinded sample.
+3. **Split fitting from evaluation.** Fit temperature, isotonic or other calibration mappings on a calibration split; report metrics on untouched data. Never evaluate a threshold on the cases used to choose it.
+4. **Report uncertainty.** Bootstrap by task—not by individual correlated step—to obtain confidence intervals for Brier score, ECE, coverage and selective risk.
+5. **Stratify.** Report by task family, horizon, consequence, modality and model–harness version. Aggregate calibration can hide severe subgroup miscalibration.
+6. **Stress distribution shift.** Re-evaluate after model, prompt, tool, retrieval, policy or environment changes. Include adversarially misleading context and corrupted-verifier tests.
+7. **Price the gate.** Measure added tokens, verifier latency, human-review time and residual critical-failure probability at each operating point.
 
-## 6. Failure modes
+## 7. Failure modes
 
-- **Confidence theater:** gating on verbalized certainty; §3.1's evidence says this wires decisions to a trained presentation habit.
-- **Consensus on poisoned context:** self-consistency passed off as truth where the error lives in conditioning (§3.3); the mitigation is source-diversity in verification, not more samples.
-- **Abstention collapse under product pressure:** tuning refusals down for UX and silently buying the fabrication rate back (the 0.544 world of [FSC §6.3.5.4] is one tuning decision away); abstention rates belong on the launch-review scorecard.
-- **Verifier monoculture:** "independent" checkers sharing the failure mode of the checked step (an LLM judge verifying LLM output for fluency) — Topic 1.8 §7's verification theater; independence must be architectural (oracle vs. judge vs. execution), not nominal.
-- **Threshold rot:** routing thresholds tuned on one model version silently mis-calibrated by the next (the refusal-variance data is the existence proof); thresholds are (M, H)-indexed like every other number in this book.
-- **Uncertainty as ritual:** collecting u and routing on nothing — the feature vector must terminate in the four-way gate (§4) or it is observability cosplay.
+- **Confidence theater:** a fluent probability is accepted without a reliability diagram or proper score.
+- **Calibration/discrimination confusion:** monotonic buckets are described as calibrated probabilities.
+- **Refusal conflation:** safety-policy refusals are counted as successful epistemic abstentions.
+- **Consensus on shared error:** additional samples repeat a conditioning failure.
+- **Semantic-clustering leakage:** the same model family generates and clusters answers, producing correlated judgments.
+- **Verifier monoculture:** supposedly independent validators share data, implementation or incentives.
+- **Threshold overfitting:** a risk threshold is tuned and reported on the same evaluation set.
+- **Coverage hiding:** low error is achieved by abstaining on most cases without reporting coverage.
+- **Shift-induced miscalibration:** a model or harness update invalidates old thresholds.
+- **Human escalation as assumed oracle:** reviewer mistakes, latency and automation bias are omitted from the loss model.
 
-## 7. Limitations
+## 8. Limitations
 
-- **The headline limitation is the field's:** no source in the ledger provides calibrated action-level confidence for agentic tasks, and Chapter 15 lists calibrated action uncertainty among the open research problems. Everything in this topic is engineered compensation for that absence.
-- The FSC behavioral measurements are short-context "toy" evaluations by the vendor's own description [FSC §6.3.5], and white-box corroboration (NLA/probes) is unavailable to API consumers; production estimates of these rates on long-horizon work do not exist in the sources.
-- Self-consistency and verifier aggregation carry real costs (k× inference; verification infrastructure) that the sources describe but do not price against accuracy on shared benchmarks; the §5 protocol is how a team prices them locally.
+- Agent correctness is often structured and delayed; a binary $Y$ may compress partial success, reversible errors and critical violations. Use task-specific loss functions where consequence matters.
+- Token probabilities describe sequence generation, not directly the probability that an environment action is correct.
+- Calibration is distribution-specific. No finite evaluation proves calibration under arbitrary deployment shift.
+- Self-consistency and verifier ensembles can be expensive and correlated. Diversity must be measured, not inferred from component names.
+- The FSC measurements are model- and evaluation-specific. They support existence and regression testing, not universal production rates.
 
-## 8. Production implications
+## 9. Production implications
 
-1. **Build the router (§4), even crude.** Two thresholds and a human-escalation path convert uncertainty from a philosophy topic into a control loop; refine with §5's curves.
-2. **Spend on verifier diversity before sampling volume:** one execution-grounded check beats three more draws whenever conditioning failure is on the table (§3.3 vs §3.4; [AAR §3.1]'s design principle).
-3. **Give abstention a first-class product path** — an "I can't determine this" outcome with graceful UX — or the schema/product pressure will convert uncertainty into conformant fabrication (Topic 7 §5.1).
-4. **Put abstention and confidently-wrong rates on the model-upgrade checklist**, per channel (§3.2): capability upgrades have shipped epistemic-care regressions in the measured record [FSC §6.3.5.4].
-5. **Treat every verifier disagreement as a logged incident-precursor**, not noise; it is the only uncertainty signal that does not pass through the model's own hands.
+1. Treat every confidence source as an empirically evaluated predictor.
+2. Report calibration, discrimination, coverage and selective risk as separate quantities.
+3. Give abstention an explicit product path and a typed reason.
+4. Prefer execution-grounded evidence for effectful actions, while measuring verifier coverage and failure.
+5. Choose thresholds from expected consequence, verification cost and residual risk—not from a universal confidence number.
+6. Version calibration artifacts with the full $(M,H)$ configuration and invalidate them on relevant changes.
+7. Preserve disagreement cases: they are high-value data for error analysis and future gate improvement.
 
-## 9. Connections
+## 10. Connections
 
-- Topic 1 supplied the distribution this topic instruments; Topic 7 built the abstention slot; Topic 14's fabrication mechanisms are what these instruments exist to catch.
-- Topic 12's router is §4's architecture at model-selection granularity, with the same verified-feedback loop [AAR].
-- Chapter 10 uses uncertainty gates as stop-condition inputs; Chapter 12 routes low-confidence high-consequence actions to approval; Chapter 13 owns the judge-bias half of verifier disagreement; Chapter 15 carries the open problem.
+- Topic 1 supplies the stochastic outputs whose uncertainty is being estimated.
+- Topic 7 supplies typed abstention and validation outcomes.
+- Topic 12 uses these estimates for model routing and escalation.
+- Topic 14 distinguishes the failure mechanisms the gate is intended to detect.
+- Chapters 10, 12 and 13 apply selective risk to termination, authorization and evaluation respectively.
 
 ## Sources
 
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §2.3.3, §6.3.4.A, §6.3.5, §6.4.1.4, §6.4.2
+[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf`) §2.3.3, §6.3.4–6.4.2
 [AAR] Agent-as-a-Router, arXiv:2606.22902 (`Knowledge_source/2606.22902v3.pdf`) §3.1–3.3
 [HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.3–3.4
 [CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.1.3
-[BEA] Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents
-[CompWoB] Furuta et al., TMLR — https://deepmind.google/research/publications/46840/
+[BEA] Anthropic, “Building Effective Agents” — https://www.anthropic.com/engineering/building-effective-agents
+[CALIB] Guo et al., “On Calibration of Modern Neural Networks,” ICML 2017 — https://proceedings.mlr.press/v70/guo17a.html
+[SELECT] Geifman and El-Yaniv, “Selective Classification for Deep Neural Networks,” 2017 — https://arxiv.org/abs/1705.08500
+[CONFORMAL] Angelopoulos and Bates, “A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification” — https://arxiv.org/abs/2107.07511
+[SEM-ENT] Kuhn, Gal, and Farquhar, “Detecting Hallucinations in Large Language Models Using Semantic Entropy,” Nature 2024 — https://www.nature.com/articles/s41586-024-07421-0

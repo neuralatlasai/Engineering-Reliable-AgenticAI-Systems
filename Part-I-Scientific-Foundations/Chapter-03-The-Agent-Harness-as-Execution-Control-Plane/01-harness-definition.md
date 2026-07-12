@@ -43,8 +43,8 @@ An artifact that manages none of these is not a harness — it is a prompt. This
 
 Three results, assembled across two chapters, now stated as the definition's justification:
 
-1. **Behavioral identity:** two agents differing only in 𝓒 "are behaviorally distinct" [HX §3.1] — measured as the 23.8-point spread at fixed models [HB §4.2].
-2. **Improvability:** editing 𝓒 alone yields +14.5% average, up to +44.0%, "gains largest where baselines are lowest" [HX abstract].
+1. **Behavioral identity:** two agents differing only in 𝓒 "are behaviorally distinct" [HX §3.1] — consistent with the 23.8-point harness-aggregated spread under a fixed model pool (a configuration-level contrast, not a per-model causal effect) [HB §4.1–4.2].
+2. **Improvability:** editing 𝓒 alone yields +14.5% average, up to +44.0%, "gains largest where baselines are lowest," on the benchmark suite reported [HX abstract].
 3. **Failure attribution:** production failures cluster in 𝓒's responsibilities — "missing repository context, brittle tool interfaces, weak validators, excessive token cost, poor retry policies, or mismatched permission boundaries rather than... model generation" [CAH §3.5].
 
 A layer that is behaviorally decisive, independently improvable, and where the failures actually live is a first-class engineering object. That is the whole argument, and it is quantitative.
@@ -67,7 +67,7 @@ A layer that is behaviorally decisive, independently improvable, and where the f
 1. **Name a harness owner.** The layer that is behaviorally decisive (§6) needs an owner, a repository, a version history, and a review process — most organizations have all four for the model choice and none for 𝓒.
 2. **Write your 𝓒 down.** Enumerate your configuration against the [HB §3] component list (prompts, action formats, context construction, tools, workspace access, permissions, budgets, tracing, recovery); components you cannot enumerate, you cannot test or garbage-collect (Topic 12).
 3. **Adopt the governor stance:** every design review question of the form "will the model do X?" gets the counter-question "what does the harness do when it doesn't?" [CAH §3.4.1's decision list is the menu].
-4. **Report (𝓜, 𝓒, version) — always.** The definitional equation Agent = Model + Harness [HB §3] is a reporting requirement wearing a definition's clothes.
+4. **Report the full configuration, always.** "Agent = Model + Harness" [HB §3] is the structural shorthand; the measured deployed system is the versioned tuple $c=(M_c,H_c,D_c,\nu_c,B_c,P_c,\mathcal U_c,J_c)$ of Chapter 1's notation contract — decoding settings, budgets, permissions, tool contracts, and evaluator included, because each can change the induced behavior distribution.
 
 ## 10. Connections
 

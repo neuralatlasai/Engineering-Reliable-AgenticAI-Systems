@@ -2,84 +2,141 @@
 
 ## 1. Problem and objective
 
-Two architectures can produce the identical trace of "model called a tool, got a result, continued." In one, the provider executes the tool inside its own infrastructure and returns to you a finished multi-step result. In the other, your harness receives each proposed call, decides whether to execute it, runs it in your environment, and feeds the result back. The difference is invisible in a demo and decisive in production: it determines where control, observability, permissions, state, and cost live. The objective of this topic is to make the boundary precise, enumerate what each side of it can and cannot give you, and derive placement rules — because "who executes the tool and who runs the loop" is the most consequential architecture decision this chapter touches.
+“The model used a tool” hides several independent placement decisions. The model may propose the call, the provider may schedule or execute it, a remote service may hold the state, and the application may still authorize or audit it. Treating all of these as one hosted-versus-local switch produces incorrect security, latency and recovery assumptions.
+
+The objective is to decompose tool use into explicit loci—proposal, orchestration, authorization, execution, state and evidence—then choose each locus from the required assurance level. The topic concerns the model’s immediate control envelope; Chapter 3 owns the full harness implementation.
 
 ## 2. Intuition first
 
-Hiring an employee versus hiring an agency: both get the work done. The employee works inside your building, with your badge system, your logs, your equipment — every action is yours to gate and audit. The agency delivers outcomes; its internal process is its own, cheaper to consume and opaque by construction. Neither is wrong. What is wrong is not *knowing* which one you have — discovering during an incident that the "tool call" you needed to audit executed inside someone else's infrastructure with no trace in yours.
+Two systems can display the same three-line trace—call, result, answer—while having completely different operational properties. In one, the application sees and approves every proposed effect before executing it inside its own transaction boundary. In another, a provider runs a hosted capability and returns structured events after the fact. A third calls a remote MCP server: authorization may be local or provider-mediated, execution is remote, and state belongs to the service.
 
-## 3. The boundary, as the interfaces define it
+The meaningful question is therefore not “hosted or local?” It is: **who decides, who authorizes, who executes, who owns the state, and what evidence survives?**
 
-**Model-native (provider-executed) tools.** The API-side catalog: "web search, file search, image generation, code interpreter, computer use" — hosted tools the provider executes [OAT]; remote MCP servers occupy a middle position (external to the provider, still outside your process, with an approval-policy knob: `require_approval` [OAT]). With hosted tools, the loop iteration for that capability happens inside the provider: the model calls, the provider executes, results return to the model, and you receive the downstream output.
+## 3. A six-locus decomposition
 
-**Harness-implemented (client-executed) tools.** The runtime-side contract: "the SDK runs each requested tool and collects the results" in *your* process, where "you can use hooks to intercept, modify, or block tool calls before they run"; permission rules and modes gate every execution; and hooks "run in your application process... a `PreToolUse` hook that rejects a tool call prevents it from executing" [CAL]. The loop itself — evaluate, execute, feed back, repeat — is a documented client-side artifact with client-side budgets (`max_turns`, `max_budget_usd`) and typed termination [CAL].
+For each tool capability, record the following functions separately:
 
-**Control flow generalizes the same split.** Beyond single tools, the question becomes who owns *sequencing*: model-directed looping (the agent loop as shipped [CAL]) versus harness-implemented control flow — predefined code paths with model calls at the leaves [BEA], orchestration-based planning where "the harness governs how agents or modules specialize roles, execute stages, route feedback, and trigger verification loops" [CAH §3.1.4]. Chapter 1's Topic 4 stack gives the vocabulary: the placement decision is which layer (π_M, π_H, π_D) owns each loop.
+1. **Definition:** who publishes the tool contract, schema and semantic description?
+2. **Discovery:** who decides which tool definitions enter the model context?
+3. **Proposal:** which model or deterministic rule selects a tool and arguments?
+4. **Authorization and scheduling:** who admits, orders, limits or rejects proposed calls?
+5. **Execution and state:** where does the effect occur, under whose credentials, and where is state retained?
+6. **Evidence:** which party records proposals, approvals, inputs, outputs, side effects, costs and failures?
 
-## 4. The property table
+These functions can be placed independently. A provider may discover a client-defined function while the application authorizes and executes it. A remote MCP server executes outside both processes while the application requires approval. A hosted search tool can execute at the provider while returning citations and structured events sufficient for a particular audit standard [OAT].
 
-| Property | Model-native / hosted | Harness-implemented |
-|---|---|---|
-| Enforcement point for permissions | Provider's policy + coarse knobs (`require_approval` [OAT]) | Your rules, per call, pre-execution [CAL] |
-| Observability | Outputs and provider-reported metadata | Full trace: every call, result, rejection — the four-evidence run record is *constructible* [HB §3.3] |
-| Environment access | Provider's sandbox; your data must travel to it | Your workspace, your credentials, your isolation choices |
-| State location | Provider-side (their sessions/infrastructure) | Your process and filesystem [CAL sessions] |
-| Latency/cost shape | Fewer round trips; provider pricing | Round trip per turn; your compute for tools; token costs visible per step |
-| Failure semantics | Provider's retry/failure policy, partially opaque | Typed subtypes you handle [CAL] |
-| Portability | Bound to provider's tool implementations | Tools portable across models; semantics yours (Ch. 4's caveats apply) |
-| Engineering burden | Minimal | The whole apparatus of Chapters 3, 5, 12 |
+### 3.1 Provider-hosted capabilities
 
-The table's summary sentence: **hosted tools trade control surface for convenience; client tools trade engineering burden for the enforcement and evidence that Chapters 12–14 require.** Neither trade is dominated; the placement rules below say which to make where.
+Hosted tools such as web search, file search, code interpretation or computer use execute within provider-managed infrastructure [OAT]. Their exact controls, trace detail, data handling and failure semantics are endpoint- and version-specific. Hosted does **not** mean unobservable or uncontrolled; it means the application’s assurance depends partly on a provider contract and telemetry it does not implement itself.
 
-## 5. Evidence that placement matters
+### 3.2 Application-executed functions
 
-- **The permission machinery only works where you execute.** Every enforcement mechanism this book leans on — allow/deny rules, scoped patterns, permission modes, blocking hooks [CAL] — operates at the client-side execution point. Harness-Bench's protocol ("minimal required set enabled" [HB Table 1]) and its binary Security gate [HB §3.4] presuppose an execution layer the evaluator can constrain and observe. A hosted tool is, from your control plane's perspective, a single opaque action.
-- **The evidence record only exists where you execute.** The four evidence sources per run — final workspace state, execution trace, usage statistics, validator outputs [HB §3.3] — are collected at the execution boundary. Chapter 1 Topic 12 §3.2 made this record the admissibility floor for both evals and incidents; hosted execution truncates it at exactly the calls you'd most want during an incident.
-- **Harness identity changes outcomes.** The 23.8-point cross-harness spread at fixed models [HB §4.2] is, among other things, a measurement of how much client-side loop implementation matters; two systems using the "same model with tools" are not the same system.
-- **Deferred loading blurs the boundary usefully.** Tool search — provider-side deferral of function-definition loading, on the API [OAT] and in the runtime [CAL] — is a hybrid worth naming: *discovery* is delegated to save context, while *execution* stays client-side. It shows the boundary is per-function (define / discover / decide / execute / audit), not per-tool; you can place each function separately.
+For client functions, the application receives the proposed name and arguments and decides whether and how to execute them. Permission rules and pre-execution hooks can provide complete mediation when every effectful path passes through them [CAL]. This gives the application more control, but not automatic correctness: authorization code, tool implementations, credentials, retries and logs can still fail.
 
-## 6. Placement rules
+### 3.3 Remote services and MCP tools
 
-**[derived — rules ours; each grounded where cited]**
+Remote tools occupy a distinct trust boundary. The application or provider may gate the call, but execution and some state live in another administrative domain. Treat remote tool output as untrusted input, authenticate both parties, propagate the minimum identity and authority, and document data retention and failure semantics.
 
-1. **Anything effectful in *your* environment executes client-side.** Non-negotiable: it is the only placement where pre-execution gating exists [CAL] and where the evidence record is complete [HB §3.3].
-2. **Commodity read-only capabilities are the hosted-tool sweet spot** (web search, generic code interpretation on non-sensitive data [OAT]): low consequence, no workspace access, and the convenience is real.
-3. **Data gravity decides the middle cases:** a hosted code interpreter means your data travels to it; sensitive-data steps therefore execute client-side even when read-only (Chapter 12's residency and secret-management rules).
-4. **Loops with invariants live in the harness.** Any sequencing that policy must guarantee — approval before deploy, verify before report — is π_H/π_D control flow [BEA; CAH §3.1.4]; model-directed looping is for the segments where flexibility is the point (Chapter 1, Topics 9–10's whole apparatus).
-5. **Remote MCP is client-side *authorization* with remote *execution*** — grant it the trust of a remote service, not of a local tool: its approval policy [OAT] is your gate, and its outputs are untrusted input (Chapter 12's supply-chain and injection surfaces).
-6. **Decide per function, not per feature** (§5.4): definition, discovery, decision, execution, and audit can each sit on either side; write the placement down.
+## 4. Property matrix
 
-## 7. Failure modes
+| Property | Provider-hosted execution | Application execution | Remote-service execution |
+|---|---|---|---|
+| Pre-execution control | Provider controls plus exposed approval/scope knobs | Application policy with complete mediation if correctly implemented | Application/provider gate plus remote authorization |
+| Trace fidelity | Contract-dependent provider events and metadata | Application can record proposal through side effect | Split across caller and service; correlation required |
+| Data movement | Inputs move into provider boundary | Model context still moves to provider; tool data can remain local | Relevant inputs move to remote service |
+| Credentials | Provider-scoped or delegated | Application-managed | Delegated or service-specific |
+| State ownership | Provider service/session | Application stores and tools | Remote service, often partially opaque |
+| Failure and retry | Provider-defined; inspect documented events | Application-defined, including idempotency and compensation | Distributed failure; ambiguous outcomes are common |
+| Portability | Coupled to hosted semantics | Tool implementation can be model-portable | Coupled to remote contract and protocol version |
+| Engineering burden | Lower locally; assurance work shifts to vendor review | Higher implementation and operations burden | Shared burden plus cross-domain coordination |
 
-- **Phantom auditability:** compliance narratives assuming a complete trace while key steps ran hosted; discovered during the incident, which is the worst time (§5.2).
-- **Permission asymmetry:** rigorous client-side gating beside a hosted computer-use tool with provider-default policy — the control plane has a hole shaped exactly like its most powerful capability.
-- **Double loops:** provider-side agentic behavior nested inside your harness loop — retries and tool iterations happening on both sides of the boundary, multiplying cost and making termination analysis (whose budget fires first?) undefined. Know which side is looping; make the other side single-shot.
-- **Portability illusions:** "we can swap providers because our tools are ours" — true for execution, false for the semantics of hosted capabilities and loop behavior; Chapter 4's portability-limits topic owns the details.
-- **Convenience creep:** hosted tools adopted for velocity in the prototype becoming load-bearing in production without ever passing the placement review; the prototype-to-production transition is where §6's rules need a checkpoint (Chapter 15's lifecycle).
-- **State stranding:** session/conversation state accumulating provider-side [CAL sessions have client-visible IDs; hosted-tool internal state may not] — the recovery and migration story (Chapters 10, 14) must know where every piece of state physically lives.
+No column dominates. A hosted tool can be the most reliable choice when its contract and isolation are stronger than an application team could build. An application tool can be necessary when local authorization, data residency or transactional integration is load-bearing.
 
-## 8. Limitations
+## 5. Assurance and placement rules
 
-- The property table reflects the two documented interfaces [OAT; CAL]; other providers draw the line elsewhere, and the hosted-tool column especially is a moving target (what's observable, what's gateable) — re-verify per provider, per quarter.
-- The ledger contains no controlled comparison of hosted-vs-client execution on matched tasks (cost, latency, or reliability); §4's latency/cost row is architectural reasoning, not measurement.
-- "Client-side" purity is partial: the model itself is a hosted dependency, and its tool-*emission* behavior (Topic 5) is trained by the provider; the boundary governs execution and evidence, not the policy's provenance.
+Placement is a constrained decision rather than a slogan. For capability $k$, let $Z_k$ be the feasible subset of the six execution/control loci defined in §3. Let $L_k(z)$ be consequence-weighted operational loss in declared application-loss units, $C_k(z)$ monetary cost, and $\operatorname{Latency}_k(z)$ latency in seconds. Conversion weights $\lambda_c$ (loss units per currency unit) and $\lambda_\ell$ (loss units per second) make the scalarization dimensionally explicit:
 
-## 9. Production implications
+$$
+z_k^\star = \arg\min_{z\in Z_k}
+\left(
+\mathbb{E}[L_k(z)]
++\lambda_c C_k(z)
++\lambda_\ell \operatorname{Quantile}_{0.99}(\operatorname{Latency}_k(z))
+\right),
+$$
 
-1. **Draw the execution map** — every tool and loop in the system labeled with where it executes, who gates it, and what evidence it leaves; this one diagram surfaces most of §7 before deployment.
-2. **Apply the placement rules (§6) at design review, and re-apply at the prototype→production gate** — convenience creep is the default trajectory, not the exception.
-3. **For every hosted capability, document the compensating controls:** what you cannot gate pre-execution, you must bound by scope (what the tool *can* reach) and monitor post-hoc (what it *did* reach).
-4. **Budget the harness.** The client-side column's engineering burden is the price of Chapters 12–14 being possible at all; teams that won't pay it should shrink the agent's authority (Chapter 1, Topic 10) until the hosted column's guarantees suffice.
+subject to authorization, residency, audit, availability and recovery requirements. If stakeholders reject this scalarization, retain a Pareto frontier instead. The quantities are measured under a specific provider and version; they are not generic properties of “hosted” or “local.”
 
-## 10. Connections
+Practical rules:
 
-- Topics 5–7 described the emission-side machinery; this topic placed the execution side. Topic 12's router is harness-implemented control flow at model granularity.
-- Chapter 3 builds the client-side loop this topic argued for; Chapter 4 details each provider's actual split (hosted tools, client tools, managed agents); Chapter 5 owns tool contracts; Chapter 12 owns the permission and supply-chain consequences.
+1. **Place enforcement where complete mediation can be demonstrated.** For effects on internal systems, this is often the application or an internal policy gateway, but a provider-managed control can qualify if its contract and evidence meet the requirement.
+2. **Keep invariant-bearing sequencing outside model discretion.** Approval-before-deploy and verify-before-report should be explicit harness/application transitions [BEA; CAH §3.1.4].
+3. **Follow data gravity and classification.** “Read-only” does not mean safe to export. Include prompts, tool arguments, results, logs, retention and training-use terms in the data-flow review.
+4. **Treat hosted loops as nested runtimes.** Record which layer owns retries, tool iterations, cancellation and terminal status. Give the composition one global budget and a defined precedence order.
+5. **Design evidence before placement approval.** For each locus, state which events are available, their integrity, retention and correlation IDs. If a required fact cannot be reconstructed, either add compensating evidence or reject the placement.
+6. **Version the placement contract.** Provider behavior, tool implementations and remote services change. Re-qualify on material changes.
+
+## 6. Failure and recovery semantics
+
+The placement decision becomes most visible during partial failure:
+
+- A timeout does not prove that an effect did not occur.
+- Retrying an effectful call without an idempotency key may duplicate it.
+- Provider fallback after a partial side effect is different from fallback before execution.
+- Cancellation may stop model generation while a remote operation continues.
+- A successful tool response may precede eventual consistency in the target system.
+
+Effectful operations therefore require an effect identifier, an execution ledger, explicit commit status, and either rollback or compensation. “Fallback to another model” is safe only when the new model receives a verified summary of already-committed effects.
+
+## 7. Measurement
+
+For every placement candidate, measure:
+
+- task success and critical-failure rate;
+- authorization bypass and over-denial rates;
+- trace completeness against a predefined evidence schema;
+- p50/p95/p99 latency, including network and queue time;
+- cost per verified successful action;
+- timeout-after-effect and duplicate-effect rates;
+- recovery time and state-reconciliation success;
+- data classes crossing each trust boundary;
+- behavior under provider outage, degraded telemetry and version change.
+
+Compare placements on matched tasks and equivalent authority. A cross-harness aggregate difference does not isolate placement causally [HB §3.1].
+
+## 8. Failure modes
+
+- **Binary-boundary thinking:** proposal, authorization and execution are assumed co-located when they are not.
+- **Phantom auditability:** a product claims end-to-end traces without verifying that hosted or remote events cover required effects.
+- **Local-control overconfidence:** application execution is assumed safe despite flawed authorization, credentials or retry logic.
+- **Permission asymmetry:** one execution path bypasses the policy gateway used by the others.
+- **Double-loop amplification:** nested retries and budgets multiply latency and effects.
+- **Data-residency omission:** read-only inputs cross a prohibited boundary.
+- **State stranding:** active sessions or artifacts cannot be migrated or reconstructed.
+- **Fallback after mutation:** a substitute repeats or contradicts partially committed work.
+- **Version drift:** a hosted or remote capability changes semantics without requalification.
+
+## 9. Limitations
+
+- Provider interfaces evolve; every property in the matrix must be checked against the deployed endpoint and contract.
+- Client execution still depends on a hosted model unless inference is local. This decomposition controls tool effects, not model provenance.
+- Trace completeness does not prove trace truth. Evidence integrity and independent reconciliation remain necessary.
+- The available sources describe mechanisms but do not provide a controlled hosted-versus-client benchmark. Placement recommendations are assurance arguments to be validated locally.
+
+## 10. Production implications and connections
+
+1. Maintain an execution map with all six loci for every tool and loop.
+2. Attach an assurance contract: invariant, enforcement point, assumptions, evidence and residual risk.
+3. Treat remote and hosted state as explicit dependencies in recovery and migration design.
+4. Commit effectful work through idempotent, ledgered interfaces before any model fallback.
+5. Revisit placement when authority, data classification, provider contract or task consequence changes.
+
+Topics 5–7 define proposals and structured outputs; this topic locates execution and control. Chapter 3 builds the client control plane, Chapter 5 defines tool contracts, Chapter 12 owns authorization and Chapter 14 owns production failover and observability.
 
 ## Sources
 
-[OAT] OpenAI, Tools guide (hosted tools, function tools, remote MCP, tool search) — https://developers.openai.com/api/docs/guides/tools
-[CAL] Claude Agent SDK, "How the agent loop works" (client execution, permissions, hooks, budgets, sessions) — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.3–3.4, §4.2, Table 1
+[OAT] OpenAI, Tools and function-calling documentation — https://developers.openai.com/api/docs/guides/tools
+[CAL] Claude Agent SDK, “How the agent loop works” — https://code.claude.com/docs/en/agent-sdk/agent-loop
+[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.1–3.4
 [CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.1.4
-[BEA] Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents
+[BEA] Anthropic, “Building Effective Agents” — https://www.anthropic.com/engineering/building-effective-agents

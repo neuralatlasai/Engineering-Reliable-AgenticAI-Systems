@@ -2,94 +2,173 @@
 
 ## 1. Problem and objective
 
-Everything in this chapter so far assumed the model's observations arrive as text. Real deployed agents increasingly perceive rendered screens, images, and (in the embodied limit) sensor streams, and act through GUIs, desktops, and actuators. Each added modality changes the perception–action loop's error structure — not incrementally but structurally, because it changes what "observation" costs, how it can be wrong, and whether action grounding can be verified. The objective is to characterize the loop per modality with the sources' own framings, establish the central asymmetry (text/code observations are checkable in ways pixel observations are not), and state the engineering rules for systems that must cross modalities — which, per the benchmark evidence, is exactly where current agents break.
+An agent acts on an environment through observation and action channels. Text files, DOM trees, screenshots, audio streams and robot sensors expose different state variables with different latency, ambiguity, bandwidth and failure semantics. None is universally “higher fidelity”: a DOM tree can expose element identity while omitting visual occlusion; a screenshot can reveal layout while hiding program state; a file read can be exact for returned bytes while still being stale, truncated or only a small part of the environment.
+
+The objective is to model these channels without assuming independent error rates or a universal modality ladder, then derive engineering rules for cross-modal state, verification, timing, privacy and safe action grounding.
 
 ## 2. Intuition first
 
-A text-tool agent reading a file gets the file — the observation *is* the state, byte for byte. A browser agent looking at a screenshot gets a *rendering* of the state, which it must re-perceive into structure: that button, at those coordinates, probably submits the form. Perception has become inference, and inference can be wrong before any decision is made. Acting inherits the same downgrade: a `write_file` call either succeeds or errors; a click at (412, 305) silently succeeds *at clicking* regardless of whether it hit the intended control. The loop still runs — observe, decide, act — but both endpoints have acquired noise floors, and nothing in the middle can be better than its endpoints.
+A model clicking coordinates can execute the requested click perfectly and still act on the wrong control. A shell command can target the wrong file with equally perfect syntax. The modalities differ not in whether errors exist, but in where identity and state are represented and how cheaply the result can be checked.
 
-## 3. The modality ladder
+For expert readers, the useful abstraction is therefore not “pixels are noisy, text is exact.” It is: **what state does this channel reveal, what aliases remain, how old is the observation, how is intent grounded to an effect, and which independent sensor confirms the result?**
 
-Ordered by observation fidelity and action verifiability — the two properties that Chapter 1's Topics 3 and 6 identified as reliability-controlling:
+## 3. Observation and action channels by modality
 
-**Text and code.** The privileged rung, and the Code-as-Agent-Harness survey says why with precision: code is "*executable*, meaning model outputs become operations with formally verifiable outcomes; *inspectable*, meaning intermediate computation is exposed as structured traces...; and *stateful*, meaning the evolving program represents task progress in a persistent, modifiable form" [CAH §2]. Observations are lossless; actions carry native oracles.
+### 3.1 Text, code, and structured APIs
 
-**Structured GUI representations.** GUI/OS agents that perceive DOM trees and accessibility APIs rather than pixels: "agents synthesize and execute interface commands grounded in DOM trees, accessibility APIs, and executable evaluators" [CAH §4-app / Fig. 1: DOM state, visual grounding, UI memory, execute checks]. Halfway house: structure without executability — the DOM says what exists, not what the app will do.
+A file or API response can preserve returned symbols exactly. It does not expose the complete environment: results can be stale, paginated, truncated, permission-filtered or inconsistent with concurrent updates. Symbolic actions also require grounding—paths, identifiers, versions and resource ownership can be wrong even when schemas are valid.
 
-**Rendered perception (screenshots).** The vision-mediated loop: perceive pixels, ground intent to coordinates or elements, act, re-perceive to confirm. Every step is model inference; the grounding step ("which pixels are the submit button") is a recognized failure locus — Chapter 1's taxonomy row for computer-use agents (coordinate uncertainty, state verification, visual grounding) exists because of it.
+The advantage is **machine-addressable identity** and strong potential oracles: parsers, type checkers, tests, checksums and transactional responses. Code is executable, inspectable and stateful [CAH §1–2], but those properties must be instrumented rather than assumed.
 
-**Audio and realtime.** Present in the interaction surface of modern APIs but thinly evidenced in this ledger for *agentic* loops; noted as a modality whose agent-loop properties (latency floors, no re-read — you cannot re-observe an utterance) the sources do not measure. **[gap noted]**
+### 3.2 DOM, accessibility and application structure
 
-**Embodied/robotics.** Programs as executable policies "for interacting with physical or simulated worlds" [CAH §1]; skill libraries, affordance grounding, simulator feedback [CAH Fig. 1]. The ladder's bottom rung on both axes: perception is sensors, action is physics, no undo. Chapter 1 Topic 11 §3.6's exclusions apply; the class appears here as the limiting case that makes the ladder's logic vivid.
+DOM and accessibility trees provide stable element roles and identifiers when applications expose them correctly. They may omit canvas content, visual stacking, transient state, anti-bot interstitials or controls implemented outside the accessibility model. Structured representations and screenshots are complementary sensors, not a strict hierarchy.
 
-## 4. The evidence: crossing modalities is where agents currently fail
+### 3.3 Rendered images and desktop interaction
 
-The chapter's opening benchmarks are, on inspection, modality results:
+Screenshots expose visual appearance at a particular time, resolution, viewport and scale. Perception must infer objects and state; grounding must map intended semantics to an element or coordinate. Occlusion, animation, scrolling, localization, DPI scaling and delayed rendering create observation aliasing. Re-observation can detect some errors, but only if the confirmation criterion differs from the original uncertain perception.
 
-- **CompWoB is a web-perception result.** The composition collapse (94.0% → 24.9% prompted; instruction-order sensitivity) [CompWoB] occurred in web automation — the modality where observations are DOM/rendered state and actions are UI operations. The base tasks were solved; composition across a stateful *perceived* environment is what broke.
-- **ALE is a modality-union result.** Its target is the Generalist Computer-Use Agent, which "combines visual perception, code execution, tool use, and long-horizon planning within a single action loop"; its task surface is "by construction, a superset of GUI-only benchmarks like OSWorld and CLI-only benchmarks like Terminal-Bench," with most tasks demanding "computer use that interleaves GUI interaction (desktop applications, browsers, domain-specific software) with CLI operations... requiring the union of capabilities that existing benchmarks test in isolation" [ALE §1]. The result: the configuration that scores 82% on the CLI-only benchmark scores <50% on ALE's easiest tier and <10% on its hardest [ALE §1]. Same models. The delta is substantially the price of leaving the text rung — and of *switching rungs mid-task*, where each interleave point (GUI result consumed by CLI step, and back) compounds both modalities' noise floors.
-- **The over-action failure has a modality signature too:** the system card's targeted evaluations include "overeager behavior in GUI computer use" as its own category [FSC §6.3.7 heading] — acting-before-verifying is distinct enough in rendered environments to earn a dedicated evaluation.
+### 3.4 Audio and real-time interaction
 
-## 5. Formalization: what a modality does to the loop
+Audio introduces sampling, transcription, speaker attribution, turn detection, background noise and timing constraints. Captured audio can be buffered, replayed and retranscribed; only uncaptured streams are intrinsically unavailable for reinspection. A reliable loop retains the permitted evidence artifact, aligns transcript spans with timestamps and speakers, and accounts for privacy and retention requirements.
 
-In Chapter 1 Topic 2's terms, a modality fixes the observation function O and the action interface into Ψ. Define per-modality: ε_percep (probability the perceived structure mismatches actual state) and ε_ground (probability an intended action lands on the wrong target). Then the per-step success from Chapter 1 Topic 8 decomposes as **[derived — decomposition ours]**:
+### 3.5 Embodied and robotic systems
 
-```
-p_step ≈ (1 − ε_percep) · p_decide · (1 − ε_ground) · p_effect
-```
+Embodied systems add sensor fusion, coordinate frames, actuator dynamics, control delay and physical safety. High-level model decisions must not replace hard real-time control, collision avoidance or emergency stops. Learned policies propose goals or bounded skills; independently engineered controllers and interlocks enforce safety envelopes. Detailed robotics control remains outside this book’s scope, but the boundary is essential.
 
-Text/code sets ε_percep ≈ ε_ground ≈ 0, which is *why* its agents are the reliability leaders (Chapter 1 Topic 11 §4's regularity). Rendered modalities buy nonzero ε at both ends, and the multiplicative horizon mathematics then amplifies them: at ε_percep + ε_ground ≈ 0.05 per step, fifty steps cost you ~92% → ~8% survival from the modality taxes *alone*, before any decision error **[derived — illustrative arithmetic]**. The engineering programs that follow are all attacks on the two ε's:
+## 4. Formal model
 
-- **Structure recovery:** prefer DOM/accessibility observation to pixels where obtainable [CAH Fig. 1] — moves ε_percep toward 0 by changing O, not the model.
-- **Verification re-perception:** re-observe after acting ("execute checks" [CAH Fig. 1]); converts silent grounding failures into detected ones — the d-lever of Topic 1.8 §4 applied to ε_ground.
-- **Modality escape:** route steps to the text/code rung whenever an equivalent exists (CLI instead of GUI for the same operation; APIs instead of clicking through screens). ALE's task construction documents that real workflows *interleave* rungs [ALE §1]; the design freedom is choosing the lowest-ε rung per step, and the GCUA framing makes that choice the agent's core competence rather than an afterthought.
+For task specification $\mathcal Q$, let $M$ be the number of observation modalities, $x_t^{(m)}$ the raw observation from modality $m$, and $h_t$ the synchronized observable history. Let $y_t^{\mathrm{act}}$ be the model's intended-action proposal, $\widetilde a_t$ the grounded and admitted action, and $a_t$ the executed action. A single-agent specialization of Chapter 1's model is
 
-## 6. Architecture: the cross-modal loop
+$$
+x_t^{(m)}
+\sim
+\Omega_m(\cdot\mid s_t,a_{t-1},\delta_t^{(m)},\nu_t^{(m)},\mathcal Q),
+$$
 
-```
-per step:  choose rung (lowest-ε interface that can express the step)      — §5.3
-           observe structurally if possible; render only if necessary       — §5.1
-           act; re-perceive to confirm effect before consuming it           — §5.2
-           log both the perception artifact (screenshot/DOM snapshot) and
-           the grounded action target — the modality-specific run record
-```
+$$
+\varphi_t
+\sim
+F_R(\cdot\mid x_t^{(1:M)},h_t,\mathcal Q),
+$$
 
-The last line extends Chapter 1 Topic 12 §3.2's evidence discipline: for rendered modalities, the *perception artifact itself* is evidence — without the screenshot the agent acted on, no post-hoc analysis can distinguish perception failure from decision failure. Sandboxing gets a modality note too: Harness-Bench's offline sandboxes deliberately exclude live-web complexity [HB §3.2], which suppresses exactly the drift and anti-bot dynamics that browser agents face in production (Chapter 1 Topic 11's browser row); rendered-modality benchmark numbers are therefore best-case bounds twice over.
+$$
+\widetilde a_t
+\sim
+G_{m_a}(\cdot\mid y_t^{\mathrm{act}},\varphi_t,\mathcal Q),
+$$
 
-## 7. Failure modes
+$$
+a_t=\operatorname{Exec}(\widetilde a_t),
+\qquad
+s_{t+1}\sim \Psi(\cdot\mid s_t,a_t,\mathcal Q),
+$$
 
-- **Perception drift compounding:** ε_percep errors entering belief state (Chapter 1 Topic 3's mechanism 4, with a camera): the agent's world-model diverges from the screen it is looking at, confidently.
-- **Grounding slip:** right decision, wrong target — the click lands, the wrong thing happens, and *no error is raised*; only re-perception catches it (§5.2).
-- **Rung-switch state loss:** GUI state assumed by a CLI step (or vice versa) that the other interface cannot see; the interleave points [ALE §1] need explicit state handoff, not assumed continuity.
-- **Overeager action in rendered environments** [FSC §6.3.7]: acting on a partially loaded or misread screen; the mitigation is the confirm-before-consume discipline, which costs a re-perception per effectful step and is worth it in exact proportion to Chapter 1 Topic 6's reversibility axis.
-- **Benchmark transfer illusion:** CLI-rung scores quoted for GUI-rung deployments; the 82%-to-<10% spread [ALE §1] is the measured size of that illusion.
-- **Screenshot-blind audit trails:** trace records that log actions but not the perceptions they were grounded on (§6) — the incident review's key question ("what did it see?") becomes unanswerable.
+Here $s_t$ is latent environment state; $\delta_t^{(m)}$ is observation delay; $\nu_t^{(m)}$ collects channel conditions such as truncation, viewport, resolution, or noise; $F_R$ is the fusion/representation kernel; $m_a$ identifies the selected action interface; $G_{m_a}$ is its grounding-and-admission kernel; and $\Psi$ is the task-conditioned environment transition kernel. At $t=0$, use the initialization sentinel $a_{-1}=a_\varnothing$ from Chapter 1. Multiple modalities may observe overlapping but non-identical state.
 
-## 8. Limitations
+If step success requires correct perception $P_t$, decision $D_t$, grounding $G_t$ and effect $E_t$, the exact chain rule is
 
-- The ε-decomposition is illustrative structure **[derived]**; the sources do not publish per-modality ε measurements, and real perception/grounding errors are state-dependent, not i.i.d.
-- Audio/realtime agentic loops are a genuine evidence gap in this ledger (§3.4); claims about them should await sources.
-- The embodied rung is characterized here only as a limit; its own literature (excluded per Chapter 1 Topic 0 §6) has machinery — sim-to-real analysis, safety interlocks — that this book does not import.
-- ALE's difficulty confounds modality with horizon and domain expertise [ALE §1]; §4.2's reading (modality as a major contributor) is the paper's own framing but not an isolated causal decomposition.
+$$
+\Pr(P_t,D_t,G_t,E_t)
+=\Pr(P_t)
+\Pr(D_t\mid P_t)
+\Pr(G_t\mid P_t,D_t)
+\Pr(E_t\mid P_t,D_t,G_t).
+$$
 
-## 9. Production implications
+This is a diagnostic factorization, not an independence claim. The factors are state- and task-dependent. Text/code does not set perception or grounding error to zero, and a GUI benchmark delta cannot identify any one factor without a controlled ablation.
 
-1. **Choose the rung per step, and prefer descent:** every step that *can* run on text/code *should* — the modality tax is paid per step and compounds (§5).
-2. **Buy structure before intelligence:** DOM/accessibility integration and API alternatives beat model upgrades for rendered-environment reliability; they attack ε at its source [CAH Fig. 1].
-3. **Mandate re-perception after effectful rendered actions** — the confirm-before-consume loop (§5.2, §7.4), budgeted like any verification.
-4. **Log perception artifacts as evidence** (§6); a rendered-modality trace without screenshots/DOM snapshots is not a trace.
-5. **Match evaluation modality to deployment modality** (§7.5): a GUI product evaluated on CLI benchmarks has not been evaluated.
-6. **Treat modality-crossing points as interfaces** with explicit state contracts (§7.3) — they are where ALE says real workflows live, and where the union-of-capabilities requirement bites [ALE §1].
+### Observation aliasing
 
-## 10. Connections
+Aliasing is defined only relative to channel conditions. For fixed task $\mathcal Q$, previous action $a^{-}$, delay $\delta$, and channel condition $\nu$, two states are aliased under modality $m$ if they induce the same observation distribution:
 
-- This topic closes the chapter's action-interface arc (Topics 5–7: emission; 6: scheduling; 9: placement; 10: modality) and feeds Topic 11's selection problem — model choice must weight the deployment's rung profile.
-- Chapter 1 Topic 11's browser/computer-use row is this topic's taxonomy anchor; Chapter 11 develops browser and computer-use agents in full; Chapter 6 owns the context cost of perception artifacts; Chapter 13 owns modality-matched evaluation design.
+$$
+s\sim_{m;a^{-},\delta,\nu,\mathcal Q} s'
+\quad\Longleftrightarrow\quad
+\Omega_m(\cdot\mid s,a^{-},\delta,\nu,\mathcal Q)
+=\Omega_m(\cdot\mid s',a^{-},\delta,\nu,\mathcal Q).
+$$
+
+If delay and channel conditions are random, define aliasing after marginalizing both sides under the same declared channel protocol. Adding a complementary modality is valuable when it separates equivalence classes relevant to the decision. More pixels or more tokens are not useful if they preserve the same aliasing.
+
+## 5. What the benchmark evidence does and does not show
+
+- **CompWoB** demonstrates severe degradation under composed web tasks and sensitivity to instruction order [CompWoB]. Because planning, context, horizon, state coupling and interface behavior change together, it does not isolate visual perception or grounding as the causal mechanism.
+- **ALE** evaluates professional tasks combining GUI, CLI, code and domain tools [ALE §1]. Its low hard-tier scores show that the evaluated configurations struggle on that task distribution. Comparisons with narrower benchmarks are unmatched in task mix, evaluator, environment, and horizon, so they neither identify a standalone “modality tax” nor prove which structural variable caused the gap.
+- **OSWorld and WebArena** provide task environments for computer and web agents [OSWORLD; WEBARENA]. Their results are configuration- and benchmark-specific; transfer to a production UI requires matched state, permissions and timing.
+- **System-card computer-use evaluations** establish that overeager action is measurable [FSC §6.3.7]. They do not supply a general rate for every rendered environment.
+
+The correct scientific conclusion is that modality and interface are important task variables requiring controlled ablation—not that one aggregate benchmark gap identifies their causal effect.
+
+## 6. Architecture: a synchronized cross-modal loop
+
+~~~text
+1. Choose the least ambiguous authorized interface for the current operation.
+2. Capture observation artifacts with timestamp, source, viewport/version and provenance.
+3. Fuse only state that can be temporally aligned; preserve conflicts explicitly.
+4. Bind intent to a stable resource or element identity where possible.
+5. Revalidate preconditions immediately before an effectful action.
+6. Execute through an authority- and consequence-aware gate.
+7. Observe an independent postcondition or reconciliation signal.
+8. Commit the state update, or rollback/compensate and escalate.
+~~~
+
+For rendered interfaces, store the screenshot or permitted derived artifact plus the grounded target. For structured interfaces, store identifiers, versions and returned state. Evidence capture must follow data-minimization rules: screenshots and audio can contain secrets, personal data and unrelated content.
+
+## 7. Measurement methodology
+
+Evaluate the full configuration on matched tasks while ablating one channel property at a time:
+
+1. **Perception:** compare inferred state with labeled or instrumented ground truth; report precision, recall and localization error by state type.
+2. **Grounding:** measure intended-target accuracy, not merely whether an input event was delivered.
+3. **Effect:** verify postconditions independently of the perception used to choose the action.
+4. **Timing:** report observation age, action latency and failure rate as a function of delay.
+5. **Fusion:** ablate DOM-only, screenshot-only and fused inputs on the same tasks.
+6. **Cross-modal handoff:** measure state-loss and contradiction rates at GUI↔CLI or audio↔text transitions.
+7. **Robustness:** perturb resolution, locale, theme, noise, layout, loading time, occlusion and concurrent updates.
+8. **Safety:** stratify by reversibility and consequence; report human takeover and blocked-action quality.
+
+Use repeated runs and task-cluster confidence intervals. A modality comparison with different tasks, models or authority profiles is descriptive, not causal.
+
+## 8. Failure modes
+
+- **Observation aliasing:** different environment states look identical through the chosen channel.
+- **Temporal misalignment:** fused observations describe different moments.
+- **Stale symbolic state:** an exact response is treated as current after the environment changes.
+- **Grounding slip:** the intended action is mapped to the wrong element, coordinate, path or identifier.
+- **False confirmation:** post-action checking repeats the same perception error.
+- **Rung-switch state loss:** one interface assumes state that another never observed.
+- **Overeager action:** execution begins before loading, identity or preconditions stabilize.
+- **Coordinate-frame error:** browser, screen, image and device coordinates are confused.
+- **Privacy-heavy observability:** evidence capture stores sensitive screenshots or audio without minimization.
+- **Unsafe real-time delegation:** a high-latency generative policy is placed in a hard control loop.
+
+## 9. Limitations
+
+- The factorization localizes error classes but does not make them independently identifiable; controlled interventions are needed.
+- Ground-truth perception labels are expensive and can omit application semantics.
+- DOM and accessibility access may change the task relative to human-only interaction; report the available interface explicitly.
+- Production browser state includes authentication, personalization, anti-bot behavior and live drift that sandbox benchmarks may suppress.
+- Robotics requires control-theoretic and safety-engineering treatment beyond this chapter.
+
+## 10. Production implications and connections
+
+1. Select interfaces by task-conditioned ambiguity, authority and verification—not a universal modality ranking.
+2. Prefer stable identifiers and structured state when they preserve the required semantics; retain rendered evidence when visual state matters.
+3. Timestamp and version every observation used for an effectful decision.
+4. Verify through an independent postcondition and measure verifier coverage.
+5. Treat cross-modal transitions as typed interfaces with explicit state contracts.
+6. Minimize, redact and govern stored perception artifacts.
+7. Keep hard real-time safety outside the generative policy.
+
+This topic specializes Chapter 1’s partial-observability model. Chapter 6 owns context cost, Chapter 11 owns computer-use implementations, Chapter 12 owns observation-channel security and Chapter 13 owns modality-matched evaluation.
 
 ## Sources
 
-[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §1–2, Fig. 1
-[ALE] Agents' Last Exam, arXiv:2606.05405 (`Knowledge_source/2606.05405v2.pdf`) §1
-[CompWoB] Furuta et al., TMLR — https://deepmind.google/research/publications/46840/
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) §6.3.7
-[HB] Harness-Bench, arXiv:2605.27922 (`Knowledge_source/2605.27922v1.pdf`) §3.2
+[CAH] Code as Agent Harness, arXiv:2605.18747 (Knowledge_source/2605.18747v1.pdf) §1–2
+[ALE] Agents’ Last Exam, arXiv:2606.05405 (Knowledge_source/2606.05405v2.pdf) §1
+[CompWoB] Furuta et al., “Exposing Limitations of Language Model Agents in Sequential-Task Compositions on the Web,” TMLR — https://arxiv.org/abs/2311.18751
+[FSC] Claude Fable 5 & Mythos 5 System Card (Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf) §6.3.7
+[HB] Harness-Bench, arXiv:2605.27922 (Knowledge_source/2605.27922v1.pdf) §3.2
+[OSWORLD] Xie et al., “OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments” — https://arxiv.org/abs/2404.07972
+[WEBARENA] Zhou et al., “WebArena: A Realistic Web Environment for Building Autonomous Agents” — https://arxiv.org/abs/2307.13854
