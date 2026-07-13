@@ -6,7 +6,7 @@ Network engineering long ago separated the plane that decides (routing tables, a
 
 ## 2. Intuition first
 
-Everything flowing through an agent system is one of two kinds. **Control** answers: which model, which tools, what permissions, what budgets, when to stop, who approves. **Data** answers: what the task says, what the files contain, what the tools returned, what the model wrote. The planes have different trust requirements — control must be trustworthy because it *decides*; data merely needs to be *handled* — and different change management: control changes are policy changes (reviewed, versioned), data changes are traffic. The catastrophic pattern is plane-crossing: a tool result (data) containing "ignore your instructions and..." that the model treats as control; a permission decision (control) made by asking the model to assess content it read from an attacker (data deciding control).
+Control and data are roles, not intrinsic properties of a byte string. **Control** determines model selection, tool visibility, permissions, budgets, scheduling, termination, and approval. **Data** carries tasks, files, tool results, proposals, and evidence. The same artifact may participate in both roles—for example, a validator result is data consumed by termination control—so every crossing needs a typed trust contract. Data integrity still matters; the distinction is that untrusted content must not acquire authority merely by being placed in model context.
 
 ## 3. The planes, enumerated
 
@@ -15,24 +15,32 @@ Everything flowing through an agent system is one of two kinds. **Control** answ
 From the configuration tuple $c=(M_c,H_c,D_c,\nu_c,B_c,P_c,\mathcal U_c,J_c)$ (Ch. 1, Topic 12 §2), the control plane comprises everything that adjudicates rather than carries:
 
 - **Admission control:** permission rules, scoped patterns, permission modes, hook interception — the $\operatorname{Admit}$ stage's inputs $P_c, B_c$ [CAL; Ch. 1, Topic 12 §3.3].
-- **Execution control:** scheduling and concurrency typing ($\operatorname{ScheduleExec}$, read-only parallel vs. mutation serial [CAL]), sandbox tier assignment (read-only / sandbox-edit / full-access, with mandatory human gates at the top tier [CAH §3.4.3]; `read-only` / `workspace-write` / `danger-full-access` with approval policies `untrusted` / `on-request` / `never` [CDX]).
+- **Execution control:** scheduling, conflict checks, sandbox selection, and approval. Current Claude Agent SDK documentation describes concurrent execution for declared read-only tools and sequential execution for state-modifying tools [CAL]. Current Codex documentation describes separate sandbox and approval layers, including read-only and workspace-write operation; these controls are version-specific and do not imply that “never ask” grants full access [CDX].
 - **Loop control:** budgets, timeouts, termination evaluation $\kappa_t$, escalation and approval routing (`user` vs. `auto_review` [CDX]).
 - **Routing control:** model selection, fallback triggers, subagent dispatch (Chapter 2, Topic 12).
 - **Change control over the harness itself:** governed mutation — harness changes touching "permission boundaries, network access, credentials, deployment, or human-review policies" requiring human approval [CAH §3.5.3].
 
 ### 3.2 Data plane
 
-The carried content: task specification $Q_j$'s text, assembled context $C_t$'s payload, model output $Y_t$'s content, tool arguments and results, workspace file contents, retrieved documents, memory content $R_t$. The data plane's engineering concerns are capacity and fidelity — routing, compression, offloading ("parse, summarize, and offload verification traces while preserving full-fidelity artifacts for audit and replay" [CAH §3.3.4]) — not adjudication.
+The carried content includes task text, assembled $c_t$, model proposal $y_t$, tool arguments/results, workspace content, retrieved documents, and verifier evidence. Its concerns include provenance, confidentiality, integrity, freshness, capacity, and fidelity—not only routing and compression [CAH §3.3.4].
 
 ### 3.3 The formal seam
 
-In HarnessX's decomposition the seam is visible as the $P/S$ split: processors implement "all per-step behavior" (adjudication logic, hook-indexed, contract-validated), while slots hold "the shared infrastructure that processors depend on but do not own" [HX §3.1]. Hook contracts are the control plane's own type discipline: each of the eight lifecycle events declares which fields a processor may modify, and violations raise "immediately... rather than silently propagating corrupted state" [HX §3.2]. The control plane polices even itself.
+HarnessX's $P/S$ split separates per-step processors from shared infrastructure [HX §3.1]; it is not equivalent to the control/data split. A processor may transform data or enforce control, while a slot may hold either. Its hook contracts nevertheless illustrate control-plane self-discipline: each event declares modifiable fields and the framework validates processor outputs [HX §3.2].
 
 ## 4. The two invariants
 
-**Invariant CP-1 (data must not act as control).** No content that entered through the data plane — tool results, file contents, retrieved documents, user-supplied examples — may directly cause a control-plane transition (permission grant, tier change, budget increase, termination-as-success, approval). It may *propose*, through the model, whatever it likes; the adjudication must run on control-plane state. The threat evidence is concrete: prompt-injection risk in agentic systems is a first-class system-card evaluation category, across coding, computer-use, and browser surfaces [FSC §5.2], and the model is a documented instruction-follower toward its context. The enforcement mechanism exists in every reference runtime: rejected calls return as data ("Claude receives the rejection message as the tool result" [CAL]) — the model observes control decisions but does not make them.
+**Invariant CP-1 (untrusted data cannot grant authority).** Data-plane content may request an action or trigger a conservative transition such as deny, pause, or escalate. It must not by itself relax permissions, increase budget, classify success, or approve an effect. Authority-expanding transitions require trusted policy state and a declared authorization mechanism. A rejection may return to the model as a tool result [CAL]; observing the decision does not confer authority to reverse it.
 
-**Invariant CP-2 (control must not silently depend on unverified data).** Where a control decision *must* consume data-plane content — an auto-reviewer deciding an escalation [CDX], a classifier triggering fallback [FSC Exec. Summary], a no-progress detector reading verification output — that dependency is a *sensor*, and it inherits sensor requirements: deterministic or reproducible where possible [CAH §3.4.1], measured for error rates, and fail-safe on uncertainty (deny/escalate, not allow). An approval flow whose evidence is the model's own summary of why approval is warranted has CP-2 inverted — the documented review-evasion attempt [FSC §2.3.3.3] is what that inversion looks like exercised.
+**Invariant CP-2 (data-dependent control is an explicit sensor dependency).** If termination, fallback, or review consumes data, the sensor identity, version, admissible inputs, error behavior, and uncertainty branch must be declared. Deterministic or reproducible checks are preferred where they measure the intended predicate [CAH §3.4.1]. A learned reviewer remains stochastic; high-consequence uncertainty should deny, pause, or escalate according to policy rather than silently allow.
+
+Let $q_t$ be trusted control state, $d_t$ untrusted or mixed-trust data, and $e_t=\operatorname{Sensor}_v(d_t)$ typed evidence from versioned sensor $v$. A privileged transition has the form
+
+$$
+q_{t+1}=F_{P_c}(q_t,e_t),
+$$
+
+not $q_{t+1}=d_t$. The transition is safe only relative to the declared policy $P_c$, sensor error model, and fail-safe branch. **[synthesis]**
 
 **[synthesis — invariant formulation ours; mechanisms and evidence sourced]**
 
@@ -41,15 +49,15 @@ In HarnessX's decomposition the seam is visible as the $P/S$ split: processors i
 | Concern | Control-plane form | Data-plane form | Seam mechanism |
 |---|---|---|---|
 | Tool use | Registry, permission rules, mutation typing [CAL; HX S] | Arguments, results | $\operatorname{Parse}/\operatorname{Admit}$ stages; `PreToolUse` interception [CAL] |
-| Context | Assembly *policy* (what classes of content, budgets, compaction rules) | Assembled content itself | $\operatorname{Assemble}_{H_c}$ signature (Ch. 1, Topic 12 §3.3) |
+| Context | Assembly policy: provenance rules, content classes, budgets, compaction | Realized $c_t$ | $\operatorname{Assemble}_{H_c}$ signature (Ch. 1, Topic 12 §3.3) |
 | State | Commit discipline, event schema [ADK] | `state_delta` payloads | Runner processes actions; partial events skip commitment [ADK] |
 | Escalation | Approval policy, routing (`user`/`auto_review`) [CDX] | The diff/evidence under review | Reviewer consumes evidence, not narration (CP-2) |
-| Termination | $\kappa_t$ predicate, budgets [CAL] | Model's completion claim | Model-stop ≠ success typing (Topic 3 §5.2) |
+| Termination | $\kappa_t$ predicate and checked budgets | Model completion proposal and verifier evidence | $\mathrm{model\_stop}\ne\mathrm{success}$ (Topic 3 §5) |
 | Harness change | Governed mutation, HITL gates [CAH §3.5.3] | Proposed edits, trace evidence | Deterministic acceptance gate [HX §4.3] |
 
 ## 6. Where the separation is hardest — and the honest statement
 
-The model is the seam's permanent weak point: it consumes both planes *in one context window* and emits proposals shaped by both. Unlike a router's packet parser, it cannot be made provably plane-blind; instruction-shaped data influences it by construction. The sources' response is consistent and worth stating as the design consequence: **the separation is enforced after the model, not inside it.** Admission, scheduling, budgets, tier gates, and acceptance gates are all post-proposal, deterministic, and content-independent to the maximum extent achievable [CAL; CAH §3.4.3; HX §3.2, §4.3]. Reducing the *influence* of injected data on proposals (context hygiene, provenance marking — Chapters 6, 12) is worthwhile defense-in-depth; it is never the enforcement layer. **[synthesis]**
+The model consumes control instructions and untrusted data in one context, so it cannot provide a hard plane boundary internally. Enforcement therefore surrounds the model: pre-inference context/provenance controls reduce influence, while post-proposal parse, admission, budget, sandbox, approval, and commit checks constrain effects [CAL; CAH §3.4.3; HX §3.2, §4.3]. These checks may inspect canonicalized action content; “deterministic” does not mean content-independent. Completeness of mediation, not placement solely after the model, is the invariant. **[synthesis]**
 
 ## 7. Failure modes
 
@@ -82,8 +90,8 @@ The model is the seam's permanent weak point: it consumes both planes *in one co
 ## Sources
 
 [CAL] Claude Agent SDK, "How the agent loop works" — https://code.claude.com/docs/en/agent-sdk/agent-loop
-[CDX] OpenAI Codex documentation, sandboxing and approvals — https://learn.chatgpt.com/docs/sandboxing
+[CDX] OpenAI Codex documentation, agent approvals and security — https://learn.chatgpt.com/docs/agent-approvals-security
 [CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.3.4, §3.4.1, §3.4.3, §3.5.3
 [HX] HarnessX, arXiv:2606.14249 (`Knowledge_source/2606.14249v2.pdf`) §3.1–3.2, §4.2–4.3
 [ADK] Google ADK runtime event-loop documentation — https://adk.dev/runtime/event-loop/
-[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/`) Exec. Summary, §2.3.3.3, §5.2
+[FSC] Claude Fable 5 & Mythos 5 System Card (`Knowledge_source/Claude Fable 5 & Claude Mythos 5 System Card.pdf`) Exec. Summary, §2.3.3.3, §5.2
