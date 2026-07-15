@@ -1,0 +1,11 @@
+.next
+.next-dev
+.book-cache
+build
+coverage
+node_modules
+out
+playwright-report
+public/_book
+test-results
+*.md

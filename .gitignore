@@ -76,7 +76,23 @@ web_modules/
 
 # Next.js build output
 .next
+.next-dev/
 out
+
+# Deterministic book compiler caches and staging directories
+.book-cache/
+.book-build-staging/
+.book-build-previous/
+public/_book/
+/build/
+/build.previous/
+/build.staging/
+/public/_book.previous/
+/public/_book.staging/
+
+# Test artifacts
+playwright-report/
+test-results/
 
 # Nuxt.js build / generate output
 .nuxt

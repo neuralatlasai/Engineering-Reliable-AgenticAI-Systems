@@ -1,220 +1,244 @@
 # Topic 7 — Tool-Result Compression, Filtering, Pagination, and Progressive Disclosure
 
-## 1. Problem and objective
+## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
-A tool can execute correctly and still degrade the agent by returning too much, too little, or the wrong representation of its result. Large outputs consume context and attention; aggressive summaries can remove the evidence needed for a later decision. Silent truncation is worse: it makes an incomplete view look complete.
+**Scope.** The output contract $\Sigma^{\mathrm{out}}_u$: what a tool returns, how much, in what shape, and what happens when the honest answer is too big. Topic 6 bounded what the model *sees before* acting; this topic bounds what it sees *after*.
 
-The objective is to transform a raw result into a bounded, typed, provenance-bearing observation that preserves task-relevant evidence and gives the agent an explicit path to retrieve more. Result shaping is therefore part of the tool contract $\Sigma_u^{\mathrm{out}}$, not a presentation cleanup performed after the fact.
+**Prerequisites.** Topics 1, 3, 6; Chapter 6 (context engineering) is the downstream consumer of everything this topic lets through.
 
-## 2. Intuition: return a navigable evidence view
+**Terminology.** *Result budget*: a hard token cap on a tool's return. *Progressive disclosure*: returning a summary plus a handle to fetch detail. *Signal*: content that changes the model's next action. *Filler*: content that does not.
 
-Suppose a log query matches one million lines. Returning all lines is unusable; returning “several errors occurred” destroys the evidence. The useful interface returns a ranked, bounded slice, the surrounding context needed to interpret it, a count or lower bound, a stable cursor, and instructions for the next refinement.
+**Boundaries.** Inside: shaping the bytes a tool returns. Outside: what the harness does with them afterwards — compaction, summarization, eviction (Chapter 6, Chapter 10).
 
-The desired path is
+**Exclusions.** No serialization-format tutorial.
 
-$$
-R_{\mathrm{raw}}
-\longrightarrow \text{filter and rank}
-\longrightarrow \text{bounded evidence page}
-\longrightarrow \text{targeted expansion}.
-$$
+**Outcomes.** The reader can give every tool a result budget, a truncation policy that steers rather than merely cuts, and a pagination contract the model can actually follow.
 
-The agent sees a view, not the underlying collection. A correct view declares its scope and incompleteness.
+## 2. Problem, bottleneck, objective, assumptions, constraints, success criteria
 
-## 3. Formal model and rigorous analysis
+**Problem.** Tool results are the largest and least-governed consumer of context in an agent system. Definitions (Topic 6) are bounded by $N$ and known in advance. Results are unbounded, arrive at runtime, and *accumulate*: a result returned at step 3 is still in context at step 30, having been re-processed 27 times.
 
-Let $R=\{x_1,\ldots,x_N\}$ be the raw result collection and $q$ the task-conditioned information need. A result shaper $F$ produces an envelope
+**Bottleneck.** The default implementation returns whatever the underlying system returns. A `list_contacts` returns all contacts. A `read_logs` returns the file. The tool is *correct* and it has just spent your context budget on data the model will read "token-by-token… wasting its limited context space on irrelevant information (imagine searching for a contact in your address book by reading each page from top-to-bottom—that is, via brute-force search)" [WTA].
 
-$$
-E
-\mathrel{=}
-F(R,q,b,p)
-\mathrel{=}
-(I,\zeta,\nu,\gamma,\sigma_E,\epsilon),
-$$
+**Objective.** An output contract with a budget, a filter, a pagination scheme, and a truncation policy that *instructs* — for every tool whose result can be large.
 
-where $b$ is a context budget, $p$ is a paging policy, $I=(i_1,\ldots,i_k)$ is the ordered returned-item sequence, $\zeta$ a continuation cursor, $\nu$ a completeness descriptor, $\gamma$ provenance and freshness metadata, $\sigma_E$ envelope/schema metadata, and $\epsilon$ typed warnings or errors.
+**Assumptions.** Context is the binding constraint. The model re-reads everything in context each turn. A large result crowds out the reasoning it was meant to support.
 
-The hard budget invariant is
+**Constraints.** You cannot always know the size in advance. Truncation loses information that may have mattered. The model cannot request "the part I need" unless the contract lets it.
 
-$$
-B(E) \le b,
-$$
+**Success criteria.** Every tool has a declared budget; no tool can exceed it; truncation is accompanied by steering text; result tokens per run are measured and bounded.
 
-where $B$ measures the actual serialized token or byte footprint at the model boundary. Byte limits alone are insufficient when the constrained resource is model context.
+## 3. Intuition first, then formalization
 
-### 3.1 Evidence coverage and compression
+### 3.1 Intuition: return an answer, not a database
 
-Let $G(q,R)$ be the set of evidence items required to answer $q$ correctly. The evidence recall of a returned view is
+The reframe: **a tool result is not a data dump; it is a message to a reader with a limited attention span who will pay to read every word, on every subsequent turn.**
+
+[WTA] states the target: "Tool implementations should take care to return only high signal information back to agents. They should prioritize contextual relevance over flexibility, and eschew low-level technical identifiers."
+
+Note "prioritize contextual relevance over **flexibility**." This is the API instinct being explicitly overruled. A good API returns everything and lets the caller pick — flexibility is a virtue, and the caller pays nothing for the fields it ignores. **A good tool returns what is needed, because the caller pays for every field it ignores, repeatedly.** The two design philosophies are in direct opposition, and this is the sentence that resolves the conflict.
+
+The design move that follows is the same one from Topic 4: change the tool, not the truncation. Instead of `read_logs` (returns the file) plus truncation, ship `search_logs`, "returning only relevant lines with context" [WTA]. The filter belongs *in the tool*, where the full data is, not in the context, where it is expensive.
+
+### 3.2 Formalization: the signal-per-token objective
+
+Let a result $r$ decompose into content units $r=\{\upsilon_1,\ldots,\upsilon_n\}$ with token costs $\mathrm{tok}(\upsilon_i)$. Let $\mathrm{sig}(\upsilon_i)=1$ if $\upsilon_i$ changes the model's next action and $0$ otherwise. Define **result efficiency**
 
 $$
-\operatorname{Recall}_{E}
-\mathrel{=}
-\frac{|\operatorname{set}(I)\cap G(q,R)|}{|G(q,R)|},
+\eta(r)\;=\;\frac{\sum_i \mathrm{sig}(\upsilon_i)\,\mathrm{tok}(\upsilon_i)}{\sum_i \mathrm{tok}(\upsilon_i)} \;\in\;[0,1].
 $$
 
-when $G$ is observable in an evaluation dataset. The compression ratio is
+**[derived]** The design objective is to maximize $\eta$ subject to a budget $B_u$:
 
 $$
-\operatorname{CR}
-\mathrel{=}
-\frac{B(R)}{\max(1,B(E))}.
+\max_{\Sigma^{\mathrm{out}}_u}\ \eta(r)
+\qquad\text{s.t.}\qquad
+\sum_i\mathrm{tok}(\upsilon_i)\le B_u .
 $$
 
-A large $\operatorname{CR}$ is not intrinsically good: an empty response compresses perfectly and answers nothing. The design problem is constrained evidence preservation:
+Two facts make this more than notation. **First, the accumulation.** A result of size $b$ returned at step $j$ of a $K$-step run is carried for $K-j$ further turns, so its true cost is
 
 $$
-\max_F\;
-\mathbb E\!\left[U(I,q)-\lambda_H H(F,R,q)\right]
-\quad
-\text{subject to}
-\quad
-B(E)\le b,
+\text{cost}(r_j)\;\approx\;b\cdot(K-j+1)
 $$
 
-where $U$ measures downstream utility and $H$ penalizes unsupported, distorted, or unverifiable transformations. For extractive filtering, $H$ can often be made zero with respect to item content; for generative summaries, it must be measured because the transform can introduce claims.
+turns' worth of tokens — **not $b$.** A 20k-token result at step 2 of a 30-step run is a 580k-token liability. This is the number nobody computes, and it is why "it's only 20k tokens" is wrong by a factor of thirty.
 
-### 3.2 Filtering, range selection, and ranking
+**Second, $\eta$ is not an intrinsic property of the data.** It depends on the *task*. The same log line is signal for a debugging task and filler for a summarization task. Therefore **the filter must be parameterized by the call, not hard-coded in the tool** — which is precisely why `search_logs(query)` beats `read_logs()` truncated: the query is the model telling you its $\mathrm{sig}$ function.
 
-Filtering removes items that violate explicit predicates such as time range, tenant, severity, resource type, or access scope. It should occur as close to the authoritative data source as practical:
+### 3.3 The verbosity control
 
-$$
-R_f
-\mathrel{=}
-\{x\in R : P_{\mathrm{auth}}(x,c)=1 \land P_q(x)=1\}.
-$$
+[WTA] documents a response-format parameter letting the agent choose:
 
-Authorization filtering precedes relevance filtering. Otherwise, even counts, ranks, or summaries can leak the existence of unauthorized records.
-
-Ranking then orders authorized candidates by a documented score $s(x,q)$. If the score is learned or approximate, the interface should not imply exhaustive correctness. Range selection is preferable to free-form truncation for ordered data because it states exactly which interval was observed.
-
-### 3.3 Pagination semantics
-
-Offset pagination is simple but unstable under concurrent insertions and deletions. Cursor pagination should bind the continuation to an ordering key, filters, access scope, and preferably a snapshot version:
-
-$$
-\zeta
-\mathrel{=}
-\operatorname{MAC}_{K}
-(\text{last key},\text{query hash},\text{scope hash},\text{snapshot},\text{expiry}).
-$$
-
-The message authentication code makes client-side cursor tampering detectable; it does not encrypt sensitive cursor contents. Use an opaque server-side handle or authenticated encryption when disclosure itself is a risk.
-
-For a fixed snapshot and total order, pages should be disjoint and composable:
-
-$$
-\operatorname{set}(I_i) \cap \operatorname{set}(I_j) = \varnothing \quad (i\ne j),
-\qquad
-\bigcup_{i=1}^{m}\operatorname{set}(I_i) = R_f
-$$
-
-after all $m$ pages are consumed. If the backend cannot provide a stable snapshot, the contract must state weaker semantics such as “best-effort continuation over a changing collection.”
-
-### 3.4 Progressive disclosure
-
-Progressive disclosure exposes increasing detail through explicit levels:
-
-$$
-E^{(0)} \subseteq_{\mathrm{info}} E^{(1)} \subseteq_{\mathrm{info}} \cdots \subseteq_{\mathrm{info}} E^{(K)}.
-$$
-
-The relation $\subseteq_{\mathrm{info}}$ means later levels preserve identifiers and claims needed to relate them to earlier levels; it does not require literal set inclusion. A practical sequence is:
-
-1. counts, facets, and high-signal snippets;
-2. selected records with semantic identifiers;
-3. full fields or surrounding ranges;
-4. raw artifact or resource link.
-
-MCP supports structured content, resource links, embedded resources, and optional output schemas [MCP]. These mechanisms can represent progressive views, but the application still owns relevance, authorization, and completeness semantics.
-
-## 4. Design methodology
-
-### 4.1 Define the evidence contract before the format
-
-For each operation, specify:
-
-- which fields are required for interpretation and downstream calls;
-- which fields are optional detail;
-- the ordering and snapshot semantics;
-- maximum page size and maximum serialized budget;
-- how truncation, filtering, and partial failure are represented;
-- how the next page, item detail, or raw artifact is retrieved;
-- which provenance and freshness fields accompany every result.
-
-Anthropic recommends pagination, range selection, filtering, or truncation with sensible defaults for potentially large tool outputs [ATE]. The same source's concise-versus-detailed example is useful evidence that result format can materially change token use, but its measured ratios are example-specific rather than universal.
-
-### 4.2 Shape a bounded page
-
-```text
-INPUT: authenticated context c, query q, page request p, budget b
-OUTPUT: typed result envelope E
-
-1. Validate q, p, b, and the requested response format.
-2. Compile authorization predicates from c; never accept them from the model.
-3. Decode and verify the cursor, or create a new snapshot descriptor.
-4. Push authorization and exact filters into the data source.
-5. Fetch at most page_size + 1 ordered records.
-6. Project required fields and compute evidence-preserving snippets.
-7. Project each record and compute its serialized size before appending it.
-8. If one record exceeds the per-item budget, return a typed oversize stub with
-   semantic identifier, size, and an authorized resource/range handle, or reject
-   when no safe drill-down representation exists.
-9. Append only complete items while the envelope remains within b.
-10. If more authorized data exists, issue an opaque continuation cursor.
-11. Set completeness to complete, paginated, truncated, or partial_failure.
-12. Attach source, snapshot/freshness, schema version, and actionable warnings.
-13. Validate E against the output schema before returning it.
+```
+enum ResponseFormat { DETAILED = "detailed", CONCISE = "concise" }
 ```
 
-Let $C_p$, $C_h$, $C_z$, $C_s$, and $C_{\mathrm{cmp}}$ denote per-record projection, snippet construction, serialization, score, and comparison costs. With an indexed predicate and cursor seek, one page is commonly $O(\log N+k(C_p+C_h+C_z))$ for $k$ returned records. Offset pagination may require $O(o+k(C_p+C_h+C_z))$ work at offset $o$, depending on the storage engine. Top-$k$ ranking over $N$ candidates with a bounded heap costs $O(NC_s+N\log k\,C_{\mathrm{cmp}}+k(C_p+C_h+C_z))$. Network transfer and storage-engine work may still dominate; measure them directly.
+with a measured instance: a Slack thread response at **206 tokens detailed** versus **72 tokens concise** — "we use ~⅓ of the tokens with `"concise"` tool responses" [WTA].
 
-### 4.3 Treat summaries as derived artifacts
+This is the cleanest available demonstration that $\eta$ is *controllable at the interface* rather than fixed by the data. It also relocates the decision correctly: **the model knows what it needs; give it the switch.** The caveat [WTA] attaches is important and this book repeats it rather than smoothing it over: response *structure* — "XML, JSON, or Markdown" — "can have an impact on evaluation performance: there is no one-size-fits-all solution." Measure the format. Do not inherit one.
 
-A generative summary should contain links or identifiers back to source items, a declared coverage range, and a transform version. Keep high-risk values such as monetary amounts, timestamps, permission changes, and error codes extractive where possible. Never let a summary erase a partial-failure marker.
+## 4. Architecture
 
-### 4.4 Evaluate the information frontier
+```
+   raw result (unbounded, from the underlying system)
+        │
+        ▼
+   ┌── FILTER ────────── parameterized by the CALL (query, fields, response_format)
+   │      │              ← the filter lives HERE, where the full data is
+   │      ▼
+   ├── RANK ──────────── most relevant first: truncation should cut the tail, not the head
+   │      │
+   │      ▼
+   ├── BUDGET ────────── hard cap B_u (Claude Code default: 25,000 tokens [WTA])
+   │      │
+   │      ├── fits ─────────────────► return
+   │      │
+   │      └── exceeds ──────────────► TRUNCATE + STEER + PAGINATE
+   │                                   ├─ what was cut, and how much
+   │                                   ├─ how to get the rest (cursor)
+   │                                   └─ how to have asked better (steering) [WTA]
+   ▼
+   provenance envelope φ_u (Topic 12) ─────► tool_result → context
+```
 
-Sweep page size, field projection, ranking depth, and summary mode. Measure task success, evidence recall, citation correctness, result tokens, total turns, latency, repeated-fetch rate, and unsupported-claim rate. Plot task success against total result tokens; choose a configuration on the Pareto frontier rather than minimizing tokens alone.
+**The ranking step is what makes truncation survivable.** Truncating an *unranked* result cuts arbitrary content. Truncating a *ranked* result cuts the least relevant tail, and the loss is bounded by the ranker's quality rather than by file order. A tool that truncates without ranking is a tool that returns a random sample.
 
-OpenAI's current file-search guide explicitly describes a quality trade-off when lowering the maximum number of retrieved results and supports metadata filters plus optional inclusion of raw search results [OFS]. This is implementation evidence for the general recall–latency–context trade-off, not proof of an optimal result count.
+## 5. Grounding
 
-## 5. Failure modes
+- **Return high-signal information; prioritize relevance over flexibility; eschew low-level technical identifiers** [WTA].
+- **The brute-force-search anti-pattern:** an agent reading `list_contacts` token-by-token, "wasting its limited context space on irrelevant information" [WTA].
+- **The hard budget:** "For Claude Code, we restrict tool responses to 25,000 tokens by default" [WTA]. **Scope: one product's default. Not a derived optimum, and this book does not present it as one — it is evidence that a serious agent product found a hard cap necessary, and 25k is where they put it.**
+- **The mechanisms:** "some combination of pagination, range selection, filtering, and/or truncation with sensible default parameter values for any tool responses that could use up lots of context" [WTA].
+- **Truncation must steer:** "steer agents with helpful instructions. You can directly encourage agents to pursue more token-efficient strategies, like making many small and targeted searches instead of a single, broad search for a knowledge retrieval task" [WTA].
+- **Verbosity control and its measured effect:** 206 → 72 tokens, "~⅓ of the tokens" [WTA]. **Scope: one worked example on one Slack response. It is an existence proof of controllability, not a general compression ratio.**
+- **Format matters and is not universal:** XML vs JSON vs Markdown "can have an impact on evaluation performance: there is no one-size-fits-all solution" [WTA].
+- **The result is for the model:** "Remember that the LLM, not a piece of code, needs to understand the result" [ADK-T]; return dicts with a `status` key ("success", "error", "pending") and "strive to make your return values as descriptive as possible" [ADK-T].
+- **The intermediate-result problem** — the deeper cost this topic can only mitigate: chaining tools forces large intermediates *through* the context twice. [CXM]'s worked case: a meeting transcript fetched from one system and written to another passes through the model both ways — "For a 2-hour sales meeting, that could mean processing an additional 50,000 tokens." **No amount of result shaping fixes this**; only moving the data flow out of context does (Topic 8).
 
-| Failure | Consequence | Required signal or control |
+## 6. Implementation
+
+**The output contract as an enforced object:**
+
+```python
+@dataclass(frozen=True)
+class OutputContract:
+    budget_tokens: int = 25_000          # [WTA]'s Claude Code default as a starting point
+    paginate: bool = True
+    default_limit: int = 20              # "sensible default parameter values" [WTA]
+    response_format: bool = True         # expose the DETAILED/CONCISE switch [WTA]
+    rank: bool = True                    # truncate the TAIL, not an arbitrary slice
+
+def finalize(raw, contract, model, call) -> dict:
+    units = rank_by_relevance(raw, call.args) if contract.rank else list(raw)
+
+    kept, used = [], 0
+    for unit in units:
+        t = count_tokens(unit, model)     # provider tokenizer, never an estimator [ANT-API]
+        if used + t > contract.budget_tokens:
+            break
+        kept.append(unit); used += t
+
+    out = {"status": "success", "results": kept}          # status key [ADK-T]
+
+    if len(kept) < len(units):
+        dropped = len(units) - len(kept)
+        out["truncated"] = True
+        out["status"] = "partial"                          # honest terminal, not "success"
+        out["cursor"] = cursor_for(units[len(kept)])
+        # Steering, not just notification [WTA]:
+        out["note"] = (
+            f"Showing {len(kept)} of {len(units)} results ({dropped} omitted, ranked by "
+            f"relevance). To see more, re-call with cursor={out['cursor']!r}. "
+            f"If you are looking for something specific, a narrower query will be far "
+            f"cheaper than paging through all results."
+        )
+    return out
+```
+
+Three details are load-bearing and usually absent. **`status: "partial"`** — truncation is not success, and reporting it as success is the same terminal-collapse error as Chapter 4's `model_stop`-as-`success`. **The ranked cut** — the tail goes, not a random slice. **The steering note** — it tells the model both *how to get the rest* and *how to have asked better*, which is [WTA]'s explicit instruction and the difference between a truncation that trains and one that merely frustrates.
+
+**The response-format switch** ([WTA]'s enum), which belongs in $\Sigma^{\mathrm{in}}_u$:
+
+```python
+"response_format": {
+    "type": "string", "enum": ["concise", "detailed"], "default": "concise",
+    "description": "Use 'concise' (default) for scanning many items. Use 'detailed' "
+                   "only when you need full field values for a specific item.",
+}
+```
+
+Default to `concise`. The description tells the model *when* to spend the tokens — an affordance instruction (Topic 4) applied to cost.
+
+## 7. Trade-offs
+
+| Lever | Buys | Costs |
 |---|---|---|
-| Silent truncation | Agent infers completeness from a prefix | Explicit `completeness`, omitted-count estimate, and continuation |
-| Unstable offset paging | Duplicates or omissions under concurrent writes | Snapshot-bound cursor and total ordering |
-| Overcompression | Critical exception or qualifier disappears | Evidence-recall tests and drill-down path |
-| Generative distortion | Summary adds or changes facts | Source-linked claims; extractive mode for critical fields |
-| Unauthorized aggregation | Count or summary leaks restricted records | Authorization predicate before aggregation |
-| Cursor replay or tampering | Cross-query or cross-tenant access | Scope-bound, expiring authenticated cursor |
-| Context oscillation | Agent repeatedly alternates concise and detailed calls | Clear response modes, semantic identifiers, trace-based tuning |
-| Partial-success erasure | Successful items hide failed shards | Per-partition status and top-level partial-failure state |
-| Stale continuation | Later page belongs to a different state | Snapshot/version declaration or explicit weak consistency |
+| Hard budget $B_u$ | Bounded worst case; no single call can blow the window | Information loss; a badly-ranked truncation loses the answer |
+| Ranking before truncation | Loss is bounded by ranker quality | A ranker to build, tune, and measure |
+| Pagination | Model can get the rest | **Round trips**; a model that pages through everything has spent more than the dump would have |
+| Filtering in-tool | Highest $\eta$; the win | The tool must know the task — hence query parameters |
+| `concise`/`detailed` | ~⅓ tokens on one measured case [WTA] | The model must choose correctly; a wrong `concise` costs a retry |
+| Rich descriptive returns [ADK-T] | Model interprets correctly | Directly opposed to compression — **this is a real conflict, not a synergy** |
 
-## 6. Limitations and evidence boundaries
+**The conflict worth naming.** [ADK-T] says "strive to make your return values as descriptive as possible." [WTA] says return "only high signal information." **These pull against each other**, and the resolution is not to average them: be *descriptive about the units you return* (field names the model can interpret, a status, semantic identifiers) and *ruthless about which units you return*. Descriptiveness is about the *shape*; compression is about the *set*. Conflating the two axes is how tools end up either cryptic or bloated.
 
-Task relevance is not always knowable before the model interprets intermediate evidence. A filter that looks safe can remove a rare but decisive item. Progressive disclosure can also increase latency and model turns for tasks that ultimately require most of the corpus.
+**The pagination trap.** Pagination looks free and is not. A model that pages through 10 pages has made 10 round trips and put all 10 pages in context — strictly worse than one dump, plus latency. Pagination is only a win **if the model usually stops after page one**, which is a property of your ranking, not of your pagination. If your ranker is bad, pagination *amplifies* the cost it was meant to control.
 
-Exact pagination semantics depend on the data store. A remote SaaS API may expose only offsets or short-lived cursors; the wrapper must report those limitations instead of promising snapshot isolation. Likewise, model-token budgets vary by tokenizer and serialization, so a fixed character cap is only an approximation.
+## 8. Experiments
 
-## 7. Production implications
+**Instrument first.** Per run: total result tokens; the accumulation-weighted cost $\sum_j b_j(K-j+1)$ from §3.2; per-tool result-size distribution (p50, p95, **max** — the max is what blows the window); truncation rate; pagination depth distribution.
 
-- Put result-budget enforcement in the executor boundary, not in descriptive instructions.
-- Return semantic identifiers needed for follow-up calls, but avoid irrelevant internal IDs that encourage hallucinated joins.
-- Preserve raw artifacts outside the model context and return authorized, expiring resource references where practical.
-- Instrument raw bytes, serialized tokens, returned items, omitted items, pages fetched, and downstream success.
-- Version result-shaping logic; a new summarizer, projection, or ranker changes the observation distribution seen by the policy.
-- Test empty sets, one-past-page boundaries, expired cursors, concurrent mutation, malformed backend rows, and mixed success/failure shards.
+**Ablation A — budget.** Vary $B_u$ (e.g. 5k / 25k / unbounded). Metrics: completion $G$, total tokens, latency, and **truncation-induced failures** (tasks where the answer was in the cut tail). The last requires labeled tasks and is the only way to see the *cost* of the budget rather than just its benefit.
 
-## 8. Connections
+**Ablation B — `concise` default.** [WTA]'s ~⅓ figure is a single case; measure your own ratio and, more importantly, the completion delta. **Acceptance rule: adopt `concise` as default only if $G$ is non-inferior within the clustered-bootstrap interval** — a non-inferiority test, not a superiority test (Chapter 1, Topic 12). Compression that quietly costs a point of accuracy is not a win.
 
-Topic 3 supplies the output schema that makes completeness and continuation machine-checkable. Topic 4 governs whether returned fields have usable semantic affordance. Topic 8 can aggregate and filter results inside code before model ingestion, while Topic 12 adds provenance and freshness requirements. Chapter 6 generalizes the same allocation problem from tool results to the full model context.
+**Ablation C — format.** JSON vs XML vs Markdown, per [WTA]'s explicit warning that there is "no one-size-fits-all solution." This is cheap to run and frequently surprising.
 
-## 9. Page-level sources
+**Ablation D — ranking.** Ranked vs unranked truncation at fixed $B_u$. The hypothesis is that ranking recovers most of the loss; if it does not, your ranker is the problem, not your budget.
 
-- [Anthropic, *Writing effective tools for agents*](https://www.anthropic.com/engineering/writing-tools-for-agents) [ATE]
-- [Model Context Protocol, *Tools specification (2025-06-18)*](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) [MCP]
-- [OpenAI, *File search*](https://developers.openai.com/api/docs/guides/tools-file-search) [OFS]
-- [OpenAI, *Retrieval*](https://developers.openai.com/api/docs/guides/retrieval)
+**Statistics.** Paired; clustered bootstrap; Holm across arms; non-inferiority margins predeclared.
+
+## 9. Failure modes, edge cases, hazards, mitigations, open limitations
+
+- **The unbounded result.** One `read_file` on a 2 MB log ends the run. Mitigation: a budget on *every* tool that can return variable-size data. The absence of a budget is the bug, not the large file.
+- **Silent truncation.** Result cut with no marker; the model reasons over a partial set believing it is complete, and confidently reports a wrong answer. **This is the worst failure in the topic** because it produces a confident, unflagged error. Mitigation: `status: "partial"`, explicit counts, a cursor.
+- **Truncation without ranking.** The answer was in the tail. Mitigation: rank first.
+- **Pagination amplification.** The model pages through everything; cost and latency exceed the dump. Mitigation: rank well; steer toward narrower queries [WTA]; cap pages.
+- **The accumulation blindspot.** A 20k result at step 2 costs 30× that over the run (§3.2). Teams optimize the *call* and ignore the *carry*. Mitigation: report the accumulation-weighted metric.
+- **Descriptive-vs-compressed confusion** (§7). Mitigation: descriptive shape, compressed set.
+- **Format cargo-culting.** JSON because it is familiar; [WTA] says measure it.
+- **Edge case — the intermediate that must not be summarized.** A patch, a transcript, a config file that must pass through *exactly*. Compression corrupts it. Mitigation: **do not route it through the context at all** — this is exactly the [CXM] case (§5), and Topic 8 is the answer.
+- **Open limitation.** $\mathrm{sig}(\cdot)$ is not computable in advance. Every filter is a heuristic guess at what the model will need, and a wrong guess is invisible: the model does not know what it was not shown. This is the fundamental limit of the topic, and it is why the model-controlled switches (query, `response_format`, cursor) matter more than any filter you can write.
+
+## 10. Verified observations, decision rules, production implications, connections
+
+**Verified observations.**
+1. Tools should return "only high signal information," prioritizing "contextual relevance over flexibility" [WTA].
+2. A serious agent product caps tool responses at 25,000 tokens by default [WTA].
+3. Verbosity control produced a measured 206 → 72 token reduction on one case (~⅓) [WTA].
+4. Response format affects evaluation performance and has no universal answer [WTA].
+5. Results are for the model to understand, not for code [ADK-T].
+6. Chaining tools forces intermediates through context twice; a 2-hour transcript adds ~50,000 tokens [CXM] — **unfixable at this layer.**
+
+**Decision rules.**
+- **Every tool that can return variable-size data gets a budget.** No exceptions.
+- **Truncation must be flagged (`partial`), ranked, paginated, and steered.** Silent truncation is the chapter's worst failure.
+- **Put the filter in the tool, parameterized by the call.** `search_logs(query)`, never `read_logs()` + truncate.
+- **Default to `concise`; let the model ask for `detailed`.**
+- **If a large intermediate must move between two tools without being read, stop shaping it and go to Topic 8.**
+
+**Production implications.**
+1. Add per-tool result budgets and the accumulation-weighted cost metric to your dashboards.
+2. Audit every tool for the silent-truncation bug — it is common and it produces confidently wrong answers.
+3. Run the format ablation; it is cheap and [WTA] says the answer is not universal.
+4. Treat a high pagination depth as a ranking defect, not a pagination success.
+
+**Connections.** Topic 6 bounded definitions; this topic bounds results; **Topic 8 removes the intermediates from context entirely** and is the only real answer to §5's 50,000-token chaining problem. Topic 12 wraps these results in a provenance envelope — and note that everything returned here is *untrusted data*, which is why shaping and trust are the same pipeline. Chapter 6 owns what happens to results once they are in context; Chapter 10's compaction is the last resort when this topic's discipline has already failed.
+
+## Sources
+
+[WTA] Anthropic, "Writing effective tools for agents" — "return only high signal information"; "prioritize contextual relevance over flexibility, and eschew low-level technical identifiers"; the `list_contacts` brute-force-search anti-pattern; "For Claude Code, we restrict tool responses to 25,000 tokens by default"; "pagination, range selection, filtering, and/or truncation with sensible default parameter values"; steering on truncation toward "many small and targeted searches instead of a single, broad search"; the `ResponseFormat` enum with 206 → 72 tokens ("~⅓ of the tokens"); "there is no one-size-fits-all solution" on XML/JSON/Markdown; `search_logs` vs `read_logs` — https://www.anthropic.com/engineering/writing-tools-for-agents
+[ADK-T] Google ADK custom tools — "Strive to make your return values as descriptive as possible"; the `status` key convention ("success", "error", "pending"); non-dict returns wrapped as `{"result": value}`; "Remember that the LLM, not a piece of code, needs to understand the result" — https://adk.dev/tools-custom/function-tools/
+[CXM] Anthropic, "Code execution with MCP" — intermediate results passing through context twice; "For a 2-hour sales meeting, that could mean processing an additional 50,000 tokens"; filtering 10,000 rows to 5 in the execution environment — https://www.anthropic.com/engineering/code-execution-with-mcp
+[ANT-API] Anthropic Claude API reference — `count_tokens`; third-party tokenizer undercounting — platform.claude.com docs (cache 2026-06)
