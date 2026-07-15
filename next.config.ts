@@ -3,8 +3,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { normalizeBookBasePath } from "./src/shared/base-path";
+
 const isStaticExport = process.env["BOOK_DEPLOYMENT"] === "static";
 const isProduction = process.env["NODE_ENV"] === "production";
+const deploymentBasePath = normalizeBookBasePath(process.env["BOOK_BASE_PATH"]);
 
 const securityHeaders = [
   {
@@ -36,7 +39,11 @@ const securityHeaders = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  basePath: deploymentBasePath,
   distDir: isProduction ? ".next" : ".next-dev",
+  env: {
+    NEXT_PUBLIC_BOOK_BASE_PATH: deploymentBasePath,
+  },
   output: isStaticExport ? "export" : "standalone",
   poweredByHeader: false,
   reactStrictMode: true,

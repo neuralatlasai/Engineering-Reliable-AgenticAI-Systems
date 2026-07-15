@@ -1,6 +1,7 @@
 "use client";
 
 import type { ArtifactEnvelope, SearchRecord } from "@/compiler/model";
+import { withBookBasePath } from "@/runtime/base-path";
 
 interface SearchIndexManifest {
   readonly chunks: readonly {
@@ -73,7 +74,7 @@ export class StaticSearchProvider implements SearchProvider {
 
     const requestInit: RequestInit = signal === undefined ? {} : { signal };
     const manifestResponse = await fetch(
-      "/_book/search-index/index.json",
+      withBookBasePath("/_book/search-index/index.json"),
       requestInit,
     );
     if (!manifestResponse.ok) {
@@ -89,7 +90,7 @@ export class StaticSearchProvider implements SearchProvider {
     const chunks = await Promise.all(
       manifestEnvelope.data.chunks.map(async (chunk) => {
         const response = await fetch(
-          `/_book/search-index/${chunk.path}`,
+          withBookBasePath(`/_book/search-index/${chunk.path}`),
           requestInit,
         );
         if (!response.ok) {

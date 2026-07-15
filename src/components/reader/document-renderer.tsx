@@ -13,6 +13,7 @@ import type {
   LinkRecord,
 } from "@/compiler/model";
 import { CopyButton } from "@/components/reader/copy-button";
+import { withBookBasePath } from "@/runtime/base-path";
 
 interface RenderContext {
   readonly document: CompiledDocument;
@@ -182,7 +183,7 @@ function renderNode(node: DocumentNode, context: RenderContext): ReactNode {
         link?.linkKind === "external" || link?.linkKind === "protocol-specific";
       return (
         <a
-          href={href}
+          href={withBookBasePath(href)}
           {...(external
             ? { rel: "noopener noreferrer", target: "_blank" }
             : {})}
@@ -212,7 +213,11 @@ function renderNode(node: DocumentNode, context: RenderContext): ReactNode {
         <figure>
           {/* The original asset remains available; generated variants never replace this source. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img alt={node.alt ?? ""} loading="lazy" src={source} />
+          <img
+            alt={node.alt ?? ""}
+            loading="lazy"
+            src={withBookBasePath(source)}
+          />
           {node.title === undefined ? (
             <></>
           ) : (

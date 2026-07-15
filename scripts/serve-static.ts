@@ -3,9 +3,12 @@ import { stat } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import path from "node:path";
 
+import { normalizeBookBasePath } from "../src/shared/base-path";
+
 const DEFAULT_PORT = 3_000;
 const STATIC_DIRECTORY = process.env["STATIC_DIRECTORY"] ?? "out";
 const staticRoot = path.resolve(process.cwd(), STATIC_DIRECTORY);
+const basePath = normalizeBookBasePath(process.env["BOOK_BASE_PATH"]);
 
 const mediaTypes: Readonly<Record<string, string>> = {
   ".avif": "image/avif",
@@ -64,6 +67,14 @@ function confinedPath(pathname: string): string | undefined {
   return candidate;
 }
 
+function stripBasePath(pathname: string): string | undefined {
+  if (basePath === "") return pathname;
+  if (pathname === basePath || pathname === `${basePath}/`) return "/";
+  return pathname.startsWith(`${basePath}/`)
+    ? pathname.slice(basePath.length)
+    : undefined;
+}
+
 async function regularFile(candidate: string): Promise<string | undefined> {
   try {
     const metadata = await stat(candidate);
@@ -119,7 +130,9 @@ const server = createServer(async (request, response) => {
 
   try {
     const url = new URL(request.url ?? "/", "http://static.invalid");
-    const candidate = confinedPath(url.pathname);
+    const mountedPath = stripBasePath(url.pathname);
+    const candidate =
+      mountedPath === undefined ? undefined : confinedPath(mountedPath);
     const resolved =
       candidate === undefined ? undefined : await regularFile(candidate);
     if (resolved !== undefined) {
@@ -145,7 +158,7 @@ const server = createServer(async (request, response) => {
 
 server.listen(port, "127.0.0.1", () => {
   process.stdout.write(
-    `Static test server listening on http://127.0.0.1:${port}\n`,
+    `Static test server listening on http://127.0.0.1:${port}${basePath}/\n`,
   );
 });
 

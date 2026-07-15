@@ -1,7 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { normalizeBookBasePath } from "./src/shared/base-path";
+
 const useExternalServer = process.env["PLAYWRIGHT_EXTERNAL_SERVER"] === "1";
 const baseURL = process.env["PLAYWRIGHT_BASE_URL"] ?? "http://127.0.0.1:3000";
+const bookBasePath = normalizeBookBasePath(process.env["BOOK_BASE_PATH"]);
+const serverURL = new URL(`${bookBasePath}/`, baseURL).toString();
 const serverCommand = process.env["CI"]
   ? "npm run build:static && npm run serve:static"
   : "npm run dev";
@@ -27,7 +31,7 @@ export default defineConfig({
           command: serverCommand,
           reuseExistingServer: !process.env["CI"],
           timeout: 120_000,
-          url: baseURL,
+          url: serverURL,
         },
       }),
 });

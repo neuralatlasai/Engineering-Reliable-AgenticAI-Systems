@@ -7,6 +7,7 @@ import {
   getDocumentByRoute,
   getRuntimeBookData,
 } from "@/runtime/artifacts";
+import { withBookBasePath } from "@/runtime/base-path";
 
 interface BookRouteProperties {
   readonly params: Promise<{ readonly slug: readonly string[] }>;
@@ -38,7 +39,9 @@ export async function generateMetadata({
 
   return {
     title: loaded.summary.title,
-    alternates: { canonical: loaded.summary.canonicalRoute },
+    alternates: {
+      canonical: withBookBasePath(loaded.summary.canonicalRoute),
+    },
     description: `Read ${loaded.summary.title} in the source-preserving technical edition.`,
   };
 }

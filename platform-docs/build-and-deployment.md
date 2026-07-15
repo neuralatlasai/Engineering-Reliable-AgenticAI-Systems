@@ -70,7 +70,11 @@ No application health endpoint is implemented. A deployment probe should request
 
 Deploy the complete `out/` directory. Configure the host to serve the generated trailing-slash routes and `404.html` according to its routing model.
 
-The reader and search provider use root-absolute `/read`, `/_book`, and asset URLs. Hosting under a URL subpath/base path is not supported by the current application without code/configuration changes.
+Static deployments support an optional URL subpath. Set `BOOK_BASE_PATH` at build time, for example `/Engineering-Reliable-AgenticAI-Systems`. Next config validates that value and injects the identical public value into the browser bundle, preventing route, search, and asset prefixes from drifting. Next.js applies the path to framework routes and chunks; the reader applies it to search requests, public assets, authored internal links, and canonical metadata. Leave the variable empty for a root-hosted or custom-domain deployment.
+
+The GitHub Pages workflow reads the repository's actual `base_path` from `actions/configure-pages`, builds with `npm run build:static`, and deploys only after the `Quality` workflow succeeds for a push to `main`. It checks out the exact validated commit rather than the latest moving branch head. A manual dispatch is an explicit operator override and does not inherit that quality gate.
+
+GitHub Pages cannot install the response-header policy in `next.config.ts` or `public/headers-static-example.txt`. HTTPS is provided by Pages, but CSP, frame denial, MIME-sniffing protection, referrer policy, permissions policy, and custom cache controls require a static host/CDN that supports response-header configuration. Record this limitation when Pages is the selected production host.
 
 `public/headers-static-example.txt` is a non-operative, Netlify/Cloudflare-Pages-style example. Its filename is deliberately not `_headers`; copying it into `public` does not activate headers. Translate and install the rules through the selected host's configuration, then confirm them against the deployed URL.
 

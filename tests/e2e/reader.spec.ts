@@ -1,11 +1,16 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { normalizeBookBasePath } from "../../src/shared/base-path";
+
+const basePath = normalizeBookBasePath(process.env["BOOK_BASE_PATH"]);
+const homePath = `${basePath}/`;
+
 test("renders source-compiled content with navigable landmarks", async ({
   page,
   isMobile,
 }) => {
-  await page.goto("/");
+  await page.goto(homePath);
 
   await expect(page.locator("main")).toBeVisible();
   await expect(page.locator("article h1").first()).toBeVisible();
@@ -27,7 +32,7 @@ test("renders source-compiled content with navigable landmarks", async ({
 test("supports keyboard-first search and source-provenant results", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto(homePath);
   await expect(
     page.locator('html[data-search-shortcut-ready="true"]'),
   ).toBeAttached();
@@ -36,13 +41,19 @@ test("supports keyboard-first search and source-provenant results", async ({
   const searchInput = page.getByRole("searchbox", { name: "Search query" });
   await expect(searchInput).toBeFocused();
   await searchInput.fill("context engineering");
-  await expect(page.locator(".search-result").first()).toBeVisible();
+  const firstResult = page.locator(".search-result").first();
+  await expect(firstResult).toBeVisible();
+  await firstResult.click();
+  await expect(page).toHaveURL((url) =>
+    url.pathname.startsWith(`${basePath}/read/`),
+  );
+  await expect(page.locator("article h1").first()).toBeVisible();
 });
 
 test("exposes no automatically detectable WCAG A or AA violations", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto(homePath);
   await expect(page.locator("article h1").first()).toBeVisible();
 
   const results = await new AxeBuilder({ page })
@@ -59,7 +70,7 @@ test("mobile navigation uses a focus-managed drawer", async ({
     !isMobile,
     "Mobile navigation is only exposed below the adaptive breakpoint.",
   );
-  await page.goto("/");
+  await page.goto(homePath);
   await expect(
     page.locator('html[data-search-shortcut-ready="true"]'),
   ).toBeAttached();
