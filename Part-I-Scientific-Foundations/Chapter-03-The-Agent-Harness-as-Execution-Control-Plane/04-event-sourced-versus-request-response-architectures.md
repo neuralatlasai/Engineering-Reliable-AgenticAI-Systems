@@ -1,5 +1,7 @@
 # Topic 4 — Event-Sourced versus Request–Response Runtime Architectures
 
+![Event-log-centered and request-response runtime architectures compared by authority, durability, recovery, and evidence](assets/04-event-sourced-versus-request-response-architectures_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 3 exposed two runtime emphases: an event-log-centered loop that commits declared state deltas at yield boundaries, and a conversation-centered tool loop exposed through typed messages. These are not mutually exclusive, and neither label alone guarantees replay, audit completeness, or transactionality. The objective is to separate documented mechanics from properties that require additional assumptions about durability, event completeness, reducers, external effects, and versioning.

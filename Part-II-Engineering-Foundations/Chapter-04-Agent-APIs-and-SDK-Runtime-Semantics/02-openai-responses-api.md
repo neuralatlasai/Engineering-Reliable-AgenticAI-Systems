@@ -1,5 +1,7 @@
 # Topic 2 — OpenAI Responses API: Response Items, Tool Items, Conversations, Background Execution, and Compaction
 
+![OpenAI Responses API runtime contract visualization](assets/02-openai-responses-api_visualization.png)
+
 ## 1. Problem and objective
 
 The Responses API is OpenAI's model-API surface for agentic work — the cell of Topic 1's table where *you* own the harness. The objective is its architectural semantics: the item-based object model, the three state strategies it offers, background execution, and context management — plus an honest statement of where this book's evidence for it runs out.

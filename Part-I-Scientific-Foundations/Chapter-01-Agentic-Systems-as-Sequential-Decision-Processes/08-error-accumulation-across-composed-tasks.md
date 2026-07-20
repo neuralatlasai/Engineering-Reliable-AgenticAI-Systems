@@ -1,5 +1,7 @@
 # Topic 8 — Error Accumulation Across Composed Tasks
 
+![Conditional error accumulation, verification, retry, and checkpoint recovery](assets/08-error-accumulation-across-composed-tasks_visualization.png)
+
 ## 1. Problem and objective
 
 Long tasks fail through conditional, stateful sequences. The correct starting point is therefore the probability chain rule, not an independence approximation. This topic develops:

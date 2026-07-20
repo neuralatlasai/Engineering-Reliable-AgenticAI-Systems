@@ -1,5 +1,7 @@
 # Chapter 3 — The Agent Harness as an Execution Control Plane
 
+![Chapter 3 harness control-plane architecture, evidence boundaries, recovery, and measurement limits](assets/00-chapter-scope-and-outcomes_visualization.png)
+
 ## Scope, Prerequisites, Terminology, Boundaries, Exclusions, and Expected Outcomes
 
 ---

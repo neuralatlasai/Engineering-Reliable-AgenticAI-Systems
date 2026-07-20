@@ -1,5 +1,7 @@
 # Topic 1 — Language Models as Stochastic Policies Rather Than Transaction Processors
 
+![Language-model stochastic policy bounded by a deterministic admission and effect-control harness](assets/01-language-models-as-stochastic-policies_visualization.png)
+
 ## 1. Problem and objective
 
 Most production software is built from components whose contracts specify determinism, idempotency, atomicity, and typed failure. A model endpoint has a different contract: it generates a token sequence from a context-conditioned distribution, while its transport layer may separately report refusal, truncation, quota, or service errors. The objective is to expose the compact inference interface beneath $\pi_M$, distinguish semantic uncertainty from typed endpoint failures, and derive the properties the immediate control envelope must add before a proposal can become an effect.

@@ -1,5 +1,7 @@
 # Topic 13 — Tool-Choice Accuracy and Argument-Validity Evaluation
 
+![Evaluation framework separating tool selection, conditional argument validity, admission, execution, interpretation, and verified outcomes](assets/13-tool-choice-accuracy-and-argument-validity-evaluation_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** Measuring the tool surface. Specifically: measuring $\Pr(Z_s)$ and $\Pr(Z_a\mid Z_s)$ **separately**, because an end-to-end accuracy number cannot tell you which one is failing, and they have opposite fixes.

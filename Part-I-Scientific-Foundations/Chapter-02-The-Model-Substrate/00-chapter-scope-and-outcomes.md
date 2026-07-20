@@ -1,5 +1,7 @@
 # Chapter 2 — The Model Substrate: Reasoning, Planning, Tool Use, and Uncertainty
 
+![Chapter 2 model-substrate architecture, evidence boundaries, and operational failure modes](assets/00-chapter-scope-and-outcomes_visualization.png)
+
 ## Scope, Prerequisites, Terminology, Boundaries, Exclusions, and Expected Outcomes
 
 ---

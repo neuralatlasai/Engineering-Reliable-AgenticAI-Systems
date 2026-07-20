@@ -1,5 +1,7 @@
 # Topic 13 — Reference Harness Decomposition: OpenAI Codex, Claude Code, and Google ADK
 
+![Evidence-bounded comparison of Codex, Claude Code, and Google ADK harness bindings, convergences, and divergences](assets/13-reference-harness-decomposition-codex-claude-code-adk_visualization.png)
+
 ## 1. Problem and objective
 
 The chapter's machinery has been abstract by design; this topic tests it against the three production harnesses the book uses as references, decomposing each along the canonical components (Topic 2), loop phases (Topic 3), and control mechanisms (Topics 6–8). The objective is twofold: to demonstrate that the abstractions actually fit shipped systems, and to map the *divergences* — because where mature systems disagree, a real design trade lives, and where they converge, the convergence is evidence about what the problem requires.

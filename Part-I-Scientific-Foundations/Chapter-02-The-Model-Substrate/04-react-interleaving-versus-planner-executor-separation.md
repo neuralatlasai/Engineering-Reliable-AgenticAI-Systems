@@ -1,5 +1,7 @@
 # Topic 4 — ReAct-Style Interleaving versus Explicit Planner–Executor Separation
 
+![ReAct interleaving, planner-executor separation, and evidence-triggered hybrid control](assets/04-react-interleaving-versus-planner-executor-separation_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 3 established the plan lifecycle; this topic compares two control organizations inside it: interleaving reasoning and acting in one observation-driven trajectory, or externalizing a plan that a logically separate executor consumes. Neither organization is universally dominant, and practical systems can combine them. The objective is to define each mechanism, connect it to the primary literature, expose its conditional trade-offs, and specify what must be measured before selecting a design.

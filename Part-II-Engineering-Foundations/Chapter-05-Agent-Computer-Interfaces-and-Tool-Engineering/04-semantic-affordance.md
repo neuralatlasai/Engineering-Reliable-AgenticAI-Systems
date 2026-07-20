@@ -1,5 +1,7 @@
 # Topic 4 — Semantic Affordance: Ensuring the Model Can Infer When and How to Call a Tool
 
+![Semantic-affordance architecture for comparative tool selection, neighborhood review, consolidation, and evaluation](assets/04-semantic-affordance_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** Affordance: the property that makes a tool's applicability *inferable* from the context the model actually has. Topic 3 made a chosen tool usable; this topic makes it choosable.

@@ -1,5 +1,7 @@
 # Chapter 5 — Agent–Computer Interfaces and Tool Engineering
 
+![Chapter 5 tool-engineering contract, execution pipeline, verification chain, and failure boundaries](assets/00-chapter-scope-and-outcomes_visualization.png)
+
 ## Scope, Prerequisites, Terminology, System Boundaries, Exclusions, and Expected Outcomes
 
 ---

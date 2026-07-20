@@ -1,5 +1,7 @@
 # Topic 8 — Code Execution as an Aggregation Layer over Large Tool Surfaces
 
+![Code execution as a sandboxed aggregation layer with module-level authorization, bounded results, and verification](assets/08-code-execution-as-an-aggregation-layer_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The regime change: instead of exposing $N$ tools to the model, expose **one** tool — a code executor — and present the $N$ tools as a code API the model *writes against*. This is Topics 6 and 7 taken to their conclusion, and it is the only approach with a published order-of-magnitude result.

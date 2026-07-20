@@ -1,5 +1,7 @@
 # Topic 7 — Tool-Result Compression, Filtering, Pagination, and Progressive Disclosure
 
+![Tool-result pipeline for filtering, ranking, budgeting, explicit partial disclosure, pagination, and provenance](assets/07-tool-result-compression-filtering-pagination-progressive-disclosure_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The output contract $\Sigma^{\mathrm{out}}_u$: what a tool returns, how much, in what shape, and what happens when the honest answer is too big. Topic 6 bounded what the model *sees before* acting; this topic bounds what it sees *after*.

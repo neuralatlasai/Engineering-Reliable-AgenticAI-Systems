@@ -1,5 +1,7 @@
 # Topic 9 — The Standard Tool Families: Shell, Filesystem, Browser, Computer-Use, Retrieval, Web-Search, Database, and Communication
 
+![Tool-family hazard matrix and control architecture for effect breadth, returned-content trust, and result compressibility](assets/09-shell-filesystem-browser-computer-use-retrieval-web-search-database-communication-tools_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The concrete inventory. Eight families that appear in nearly every agent system, characterized by the two properties that determine their engineering: **effect breadth** (how many effect classes a single tool spans) and **trust class** (whether its output is attacker-reachable).

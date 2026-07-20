@@ -1,5 +1,7 @@
 # Topic 12 — Portability Limits: Semantic Differences Hidden Behind Superficially Similar Abstractions
 
+![Cross-provider semantic portability limits visualization](assets/12-portability-limits_visualization.png)
+
 ## 1. Problem and objective
 
 Every surface in this chapter has an `Agent`, a `Session`, a "tool," and a way to "continue the conversation." The words match; the semantics do not. Portability marketing (the OpenAI SDK's "support for OpenAI APIs plus 100+ alternative LLM providers" [OAP]) is true at the *invocation* layer and false at the *behavior* layer, and the gap between those two truths is where migrations die. The objective is a catalogue of the specific semantic divergences documented in this chapter's sources, organized so that a migration plan can price each one — and a statement of the one portability claim that *does* hold.

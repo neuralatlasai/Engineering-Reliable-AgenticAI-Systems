@@ -1,5 +1,7 @@
 # Topic 8 — Google ADK: Agent Classes, Runner, Event Loop, Session/Memory/Artifact Services, Callbacks, and Plugins
 
+![Google ADK event-sourced commit-before-continue visualization](assets/08-google-adk_visualization.png)
+
 ## 1. Problem and objective
 
 ADK is the chapter's third harness-only SDK, and architecturally the most distinctive: its runtime is **event-sourced with a commit-before-continue discipline** (Chapter 3, Topic 4's ledger pole), and its agent model is explicitly *compositional* — workflow agents are first-class classes rather than patterns you write. The objective is the class taxonomy, the runtime's state semantics (already load-bearing in Chapter 3 and here documented as an interface), the service layer, and the extension points — with the trade its architecture makes stated plainly.

@@ -1,5 +1,7 @@
 # Topic 2 — Reasoning-Token Allocation and Test-Time Compute
 
+![Test-time compute allocation, search, evidence acquisition, and verification trade-offs](assets/02-reasoning-token-allocation-and-test-time-compute_visualization.png)
+
 ## 1. Problem and objective
 
 Current reasoning-model APIs expose more direct controls over inference-time deliberation than ordinary output-token limits provided. This changes the engineering question from "which model?" to "which model, under which endpoint-specific deliberation and search budget, for which decision?" The objective is to separate three mechanisms that consume test-time compute — per-response deliberation, exposed reasoning blocks, and multi-path search — and formulate their allocation with dimensionally valid resource constraints. Official interfaces define controls; workload-specific experiments must establish their response curves.

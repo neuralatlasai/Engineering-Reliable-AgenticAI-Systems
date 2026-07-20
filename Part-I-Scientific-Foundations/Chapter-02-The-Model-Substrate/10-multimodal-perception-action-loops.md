@@ -1,5 +1,7 @@
 # Topic 10 — Multimodal Perception–Action Loops: Text, Image, Audio, Browser, Desktop, and Robotics
 
+![Synchronized multimodal perception-action loop with temporal alignment, stable grounding, and verified effects](assets/10-multimodal-perception-action-loops_visualization.png)
+
 ## 1. Problem and objective
 
 An agent acts on an environment through observation and action channels. Text files, DOM trees, screenshots, audio streams and robot sensors expose different state variables with different latency, ambiguity, bandwidth and failure semantics. None is universally “higher fidelity”: a DOM tree can expose element identity while omitting visual occlusion; a screenshot can reveal layout while hiding program state; a file read can be exact for returned bytes while still being stale, truncated or only a small part of the environment.

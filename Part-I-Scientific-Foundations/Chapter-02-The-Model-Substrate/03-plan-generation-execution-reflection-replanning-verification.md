@@ -1,5 +1,7 @@
 # Topic 3 — Plan Generation, Execution, Reflection, Replanning, and Verification
 
+![Persistent plan lifecycle from generation through execution, reflection, replanning, and verification](assets/03-plan-generation-execution-reflection-replanning-verification_visualization.png)
+
 ## 1. Problem and objective
 
 A plan is a **planning action** but not necessarily an environment-changing action: it proposes a decomposition or policy scaffold whose later influence depends on whether the control envelope persists, validates, and consults it. This topic treats the five-stage lifecycle — generate, execute, reflect, replan, verify — as an engineering object. Planning may occur inside model inference, as an externalized artifact, or as harness-managed search [CAH §3.1]. The objective is to distinguish those mechanisms, connect them to canonical planning/search foundations, and state what turns a generated plan into a useful control object rather than authoritative prose.

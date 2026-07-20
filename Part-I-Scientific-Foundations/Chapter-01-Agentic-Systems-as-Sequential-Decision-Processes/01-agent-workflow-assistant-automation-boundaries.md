@@ -1,5 +1,7 @@
 # Topic 1 — Agent, Workflow, Assistant, Automation, and Autonomous-System Boundaries
 
+![Operational boundaries between agents, workflows, assistants, automation, and autonomous systems](assets/01-agent-workflow-assistant-automation-boundaries_visualization.png)
+
 ## 1. Problem and objective
 
 The word "agent" currently carries little engineering information by itself. Vendors apply it to cron jobs with an LLM call inside, chat assistants, and systems that hold production write access for hours. A reliability analysis needs terms that constrain control allocation and observable behavior. The objective is a set of **operational boundary tests** that classify execution paths and inform — without uniquely determining — their evaluation and control requirements.

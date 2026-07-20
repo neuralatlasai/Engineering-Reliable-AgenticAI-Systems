@@ -1,5 +1,7 @@
 # Topic 13 — Version Pinning, Release Compatibility, Schema Evolution, and Migration Tests
 
+![Four-axis version discipline and migration test tiers visualization](assets/13-version-pinning-release-compatibility-schema-evolution-migration-tests_visualization.png)
+
 ## 1. Problem and objective
 
 Chapter 1's configuration tuple $c=(M_c,H_c,D_c,\nu_c,B_c,P_c,\mathcal U_c,J_c)$ says every reported number is indexed by a *version*. This topic is that requirement made operational against interfaces that change on someone else's schedule: model IDs that retire, beta headers that gate features, SDK releases that fix silent defects, tool schemas that evolve, and — the class teams most underestimate — **model upgrades that break code through an unchanged endpoint**. The objective is the pinning surface (what must be pinned, and where), the change classes with their detection strategies, and the migration-test discipline that makes an upgrade an experiment rather than a leap.

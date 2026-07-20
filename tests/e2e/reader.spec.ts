@@ -12,6 +12,7 @@ const homePath = `${basePath}/`;
 const heroAlt =
   "A layered agentic AI system with observable execution paths and guarded boundaries";
 const heroAssetPathPrefix = `${basePath}/images/home/engineering-reliable-agentic-ai-systems-hero-`;
+const contentAssetPathPrefix = `${basePath}/_book/assets/`;
 
 interface AssetManifestEntry {
   readonly mediaType: string;
@@ -48,7 +49,7 @@ function collectRuntimeErrors(page: Page): string[] {
   return errors;
 }
 
-async function findCompiledImageRoute(): Promise<string | undefined> {
+async function findCompiledImageRoute(): Promise<string> {
   const [assetManifestSource, routeManifestSource] = await Promise.all([
     readFile(
       path.resolve(process.cwd(), "build", "asset-manifest.json"),
@@ -83,7 +84,9 @@ async function findCompiledImageRoute(): Promise<string | undefined> {
       }
     }
   }
-  return undefined;
+  throw new Error(
+    "The repository corpus must contain at least one referenced image asset.",
+  );
 }
 
 test("renders source-compiled content with navigable landmarks", async ({
@@ -153,11 +156,6 @@ test("loads a compiled content image without horizontal overflow when available"
   page,
 }) => {
   const imageRoute = await findCompiledImageRoute();
-  if (imageRoute === undefined) {
-    test.skip(true, "The compiled corpus contains no referenced image assets.");
-    return;
-  }
-
   await page.goto(`${basePath}${imageRoute}`);
   await page.waitForLoadState("networkidle");
   const image = page
@@ -178,6 +176,7 @@ test("loads a compiled content image without horizontal overflow when available"
     const imageElement = element as HTMLImageElement;
     const bounds = imageElement.getBoundingClientRect();
     return {
+      currentSourcePath: new URL(imageElement.currentSrc).pathname,
       left: bounds.left,
       naturalWidth: imageElement.naturalWidth,
       right: bounds.right,
@@ -187,6 +186,12 @@ test("loads a compiled content image without horizontal overflow when available"
   expect(metrics.naturalWidth).toBeGreaterThan(0);
   expect(metrics.left).toBeGreaterThanOrEqual(-1);
   expect(metrics.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.currentSourcePath.startsWith(contentAssetPathPrefix)).toBe(
+    true,
+  );
+  expect(
+    metrics.currentSourcePath.slice(contentAssetPathPrefix.length),
+  ).toMatch(/^[A-Fa-f0-9]{16}\//u);
 });
 
 test("supports keyboard-first search and source-provenant results", async ({

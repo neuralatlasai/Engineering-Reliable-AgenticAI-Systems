@@ -1,5 +1,7 @@
 # Topic 9 — When Deterministic Workflows Dominate Agents
 
+![Matched comparison of deterministic workflows and bounded agents](assets/09-when-deterministic-workflows-dominate-agents_visualization.png)
+
 ## 1. Problem and objective
 
 Deterministic control and agentic control are alternative allocations of runtime decisions. Neither is universally superior. A deterministic workflow can dominate when the relevant control structure is specifiable, the implementation is correct, and measured outcomes meet the deployment constraints. An agent can be preferable when runtime observations determine which actions are useful and a fixed controller would require excessive coverage logic or fail on material task strata.

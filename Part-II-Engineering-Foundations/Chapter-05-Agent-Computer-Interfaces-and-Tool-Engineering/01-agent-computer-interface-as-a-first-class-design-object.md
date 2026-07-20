@@ -1,5 +1,7 @@
 # Topic 1 — The Agent–Computer Interface as a First-Class Design Object
 
+![Agent–computer interface contract showing model-visible policy inputs, deterministic controls, surface hashing, and invalid contract states](assets/01-agent-computer-interface-as-a-first-class-design-object_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** This topic establishes the agent–computer interface (ACI) as an engineering object with a definition, a formal contract, and an owner. It fixes the tool-contract tuple $u$ that the remaining fourteen topics populate field by field.

@@ -1,5 +1,7 @@
 # Topic 5 — Tool-Call Generation as Constrained Structured Prediction
 
+![Tool-call proposal stack from constrained prediction through authorization, execution, and postcondition evidence](assets/05-tool-call-generation-as-constrained-structured-prediction_visualization.png)
+
 ## 1. Problem and objective
 
 For developer-defined functions, a model does not execute the implementation: it emits zero, one, or multiple structured call proposals that the application parses, authorizes, schedules, and may execute [OFC]. Toolformer provides an early model-side formulation in which API calls and returned results are inserted into an autoregressive sequence [Toolformer]. Hosted tools can place execution elsewhere, but the prediction problem remains. The objective is to factor call cardinality, tool selection, argument generation, and optional response content; state the conditional guarantees of constrained decoding; and separate syntactic acceptance from semantic authorization and truth.

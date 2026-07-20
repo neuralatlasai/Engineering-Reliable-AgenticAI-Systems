@@ -1,5 +1,7 @@
 # Topic 2 — Formal Interaction Model: Observation, Latent State, Action, Transition, Objective, and Termination
 
+![Formal interaction model for constrained partially observable agent execution](assets/02-formal-interaction-model_visualization.png)
+
 ## 1. Problem and objective
 
 Engineering discussions about agents stall because participants use words — "state," "step," "memory," "done" — that have no shared referent. The objective here is a constrained partially observable decision model that (a) covers single- and multi-agent execution, (b) distinguishes latent process variables from events an SDK can record, and (c) is precise enough to support the reliability mathematics of Topics 7–8.

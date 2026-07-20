@@ -1,5 +1,7 @@
 # Topic 7 — Structured Outputs, Schema Adherence, Constrained Decoding, and Semantic Validity
 
+![Structured-output validity stack from terminal completion to evidence and authorization](assets/07-structured-outputs-schema-adherence-semantic-validity_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 5 treated schemas in tool calls; this topic generalizes to extraction, routing, workflow state, and evaluation records. The objective is to define a conditional validity stack: terminal completion, parseability, supported-schema conformance, local semantic invariants, and evidence-backed correctness. The key engineering boundary is not “structured versus unstructured,” but which property was checked, by which mechanism, against which version of the schema and world state.

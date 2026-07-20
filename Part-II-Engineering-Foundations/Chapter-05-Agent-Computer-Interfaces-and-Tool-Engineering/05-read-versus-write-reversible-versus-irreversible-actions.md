@@ -1,5 +1,7 @@
 # Topic 5 — Read Tools versus Write Tools; Reversible versus Irreversible Actions
 
+![Effect classification for read, reversible-write, and irreversible-write tools with retry and ambiguous-failure controls](assets/05-read-versus-write-reversible-versus-irreversible-actions_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The effect class $\chi_u$ — the field that determines every other safety field in the contract. Decided first (Topic 1, §4's dependency order), because it says whether $\alpha_u$, $\iota_u$, and a human gate are required at all.

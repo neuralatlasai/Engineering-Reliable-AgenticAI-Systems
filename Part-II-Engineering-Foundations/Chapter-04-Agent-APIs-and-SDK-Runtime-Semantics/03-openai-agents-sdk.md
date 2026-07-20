@@ -1,5 +1,7 @@
 # Topic 3 — OpenAI Agents SDK: Agent, Runner, Tools, Handoffs, Agents-as-Tools, Sessions, Guardrails, Tracing, and Interruptions
 
+![OpenAI Agents SDK harness primitives and responsibilities visualization](assets/03-openai-agents-sdk_visualization.png)
+
 ## 1. Problem and objective
 
 The OpenAI Agents SDK is a harness-only surface (Topic 1, cell 2/4): it supplies the loop and lifecycle, you supply the tools and the deployment. Its primitive set is unusually explicit about *multi-agent* structure — handoffs, agents-as-tools — which makes it the best-documented instance in this chapter of a design decision Chapter 8 will have to make. The objective is the primitive inventory with its architectural reading: what each primitive is, which Chapter 3 control-plane responsibility it discharges, and which it leaves open.

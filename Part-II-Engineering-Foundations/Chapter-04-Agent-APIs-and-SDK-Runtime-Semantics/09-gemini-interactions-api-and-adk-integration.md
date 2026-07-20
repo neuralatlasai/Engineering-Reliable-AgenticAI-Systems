@@ -1,5 +1,7 @@
 # Topic 9 — Gemini Interactions API and ADK Integration
 
+![Gemini Interactions API storage coupling and ADK integration visualization](assets/09-gemini-interactions-api-and-adk-integration_visualization.png)
+
 ## 1. Problem and objective
 
 The Interactions API is Google's model surface for agentic work, and it makes an architectural choice the other two model APIs do not: it **elevates the agentic turn itself to the API's object**. An interaction is not a message exchange; it is "a complete conversation turn as a session record containing a chronological sequence of **execution steps** — including model thoughts, tool calls, and final outputs" [GIA]. The objective is that object model, its statefulness and retention semantics (which are unusually explicit and unusually consequential), background execution, the hosted-agent endpoint, and its relationship to ADK.

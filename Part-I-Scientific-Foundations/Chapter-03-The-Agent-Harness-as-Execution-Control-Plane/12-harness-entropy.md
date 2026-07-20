@@ -1,5 +1,7 @@
 # Topic 12 — Harness Entropy: Duplicated Instructions, Stale Rules, Dead Tools, Contradictory State, and Unbounded Context
 
+![Five forms of harness entropy with detection instruments, removal ablations, and governed garbage collection](assets/12-harness-entropy_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 11 established that the harness is capability; this topic establishes that the harness *decays*. Every incident adds an instruction, every integration adds a tool, every quarter adds rules — and almost nothing is ever removed, because removal requires proving a negative ("nothing depends on this") that nobody is paid to prove. The accumulated residue — duplicated instructions, stale rules, dead tools, contradictory state, unbounded context — is **harness entropy**: configuration mass that no longer pays rent, degrading cost always and correctness eventually. The objective is the five named forms with their mechanisms of harm, the detection instruments computable from the run record, and the garbage-collection discipline the sources support.

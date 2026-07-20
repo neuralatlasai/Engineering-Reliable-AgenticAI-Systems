@@ -1,5 +1,7 @@
 # Topic 10 — Sync, Async, Streaming, WebSocket, Webhook, and Background Execution
 
+![Agent execution mode durability and recovery visualization](assets/10-sync-async-streaming-websocket-webhook-background-execution_visualization.png)
+
 ## 1. Problem and objective
 
 An agent run can take minutes (Chapter 2's frontier note: "single requests on hard tasks can run many minutes" [ANT-API]). HTTP was not designed for that, and every ecosystem in this chapter has therefore grown a set of execution modes that trade latency, durability, and operational complexity against one another. The objective is the six modes as an engineering taxonomy: what each guarantees, what each *fails* to guarantee, which surfaces offer which, and the decision rule that maps a workload to a mode — plus the two documented failure classes (timeout semantics and delivery semantics) that bite hardest in practice.

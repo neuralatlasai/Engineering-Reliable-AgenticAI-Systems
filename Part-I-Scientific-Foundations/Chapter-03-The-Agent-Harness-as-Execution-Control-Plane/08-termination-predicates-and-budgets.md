@@ -1,5 +1,7 @@
 # Topic 8 — Termination Predicates, Step Budgets, Token Budgets, Time Budgets, and Cost Budgets
 
+![Typed termination precedence, multi-resource budget enforcement, overshoot assumptions, and statistical treatment](assets/08-termination-predicates-and-budgets_visualization.png)
+
 ## 1. Problem and objective
 
 An agent run needs an explicit rule for deciding whether to continue, declare a validated result, stop without validation, or halt because execution can no longer proceed safely. A model-generated completion signal is evidence for that decision, not the decision itself. The harness owns the decision because it can combine the observable trace $\hat\tau_{0:t}$, validator evidence, policy state, execution errors, external cancellation, and resource accounts.

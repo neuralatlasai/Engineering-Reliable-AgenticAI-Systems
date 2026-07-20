@@ -14,6 +14,8 @@ concurrency:
 jobs:
   build:
     name: Build Pages artifact
+    outputs:
+      content_image_path: ${{ steps.content_image.outputs.path }}
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
@@ -48,6 +50,37 @@ jobs:
         env:
           BOOK_BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: npm run build:static
+      - name: Select representative content image probe
+        id: content_image
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+
+          const manifest = JSON.parse(
+            readFileSync("build/asset-manifest.json", "utf8"),
+          );
+          const image = manifest.data.assets.find(
+            (asset) =>
+              asset.mediaType.startsWith("image/") &&
+              asset.referencingDocumentIds.length > 0,
+          );
+          if (
+            image === undefined ||
+            !/^\/_book\/assets\/[A-Za-z0-9%._~/-]+$/u.test(image.outputPath)
+          ) {
+            throw new Error("No safe referenced content image is available for the deployment probe.");
+          }
+          const outputFile = process.env.GITHUB_OUTPUT;
+          if (outputFile === undefined || outputFile === "") {
+            throw new Error("GITHUB_OUTPUT is unavailable.");
+          }
+          appendFileSync(
+            outputFile,
+            `path=${image.outputPath.replace(/^\/+/, "")}\n`,
+            "utf8",
+          );
+          NODE
       - name: Upload immutable Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
@@ -70,6 +103,7 @@ jobs:
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
       - name: Verify deployed root, search manifest, and hero image
         env:
+          CONTENT_IMAGE_PATH: ${{ needs.build.outputs.content_image_path }}
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           set -euo pipefail
@@ -84,3 +118,6 @@ jobs:
             --retry 6 --retry-all-errors --retry-delay 5 --max-time 30 \
             --output /dev/null \
             "${base_url}images/home/engineering-reliable-agentic-ai-systems-hero-1536.avif"
+          curl --fail --silent --show-error --location \
+            --retry 6 --retry-all-errors --retry-delay 5 --max-time 30 \
+            --output /dev/null "${base_url}${CONTENT_IMAGE_PATH}"

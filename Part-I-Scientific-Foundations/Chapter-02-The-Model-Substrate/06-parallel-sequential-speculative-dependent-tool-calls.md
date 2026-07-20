@@ -1,5 +1,7 @@
 # Topic 6 — Parallel, Sequential, Speculative, and Dependent Tool Calls
 
+![Effect-aware dependency scheduler for parallel, sequential, speculative, and dependent tool calls](assets/06-parallel-sequential-speculative-dependent-tool-calls_visualization.png)
+
 ## 1. Problem and objective
 
 A response may contain zero, one, or multiple tool-call proposals; a run may contain many responses. Call **emission cardinality** belongs to the model/API contract, while execution order, isolation, cancellation, and partial-failure handling belong to the immediate control envelope. The objective is to separate these layers and replace the unsafe read/write binary with a dependency-and-conflict DAG over declared resources, side-effect properties, and consistency requirements.

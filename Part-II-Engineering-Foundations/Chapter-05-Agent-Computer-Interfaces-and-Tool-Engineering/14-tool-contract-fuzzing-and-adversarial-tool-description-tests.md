@@ -1,5 +1,7 @@
 # Topic 14 — Tool-Contract Fuzzing and Adversarial Tool-Description Tests
 
+![Contract-fuzzing and adversarial-description test lanes feeding a surface-hashed continuous-integration gate](assets/14-tool-contract-fuzzing-and-adversarial-tool-description-tests_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** Attacking your own tool surface before someone else does. Two attack surfaces: the **contract** (can malformed or malicious arguments break the enforcement chain?) and the **description** (can a hostile description — yours by accident, or a third party's by design — steer the model?).

@@ -1,5 +1,7 @@
 # Topic 12 — Tool-Output Provenance, Freshness, Citations, and Untrusted-Content Boundaries
 
+![Provenance, freshness, citation, and untrusted-content architecture with content-independent authorization and reverification](assets/12-tool-output-provenance-freshness-citations-untrusted-content-boundaries_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** $\phi_u$ — the provenance contract on tool output. Where the bytes came from, when, whether they can be trusted, and — the load-bearing question — **whether they are permitted to influence what the agent does next.**

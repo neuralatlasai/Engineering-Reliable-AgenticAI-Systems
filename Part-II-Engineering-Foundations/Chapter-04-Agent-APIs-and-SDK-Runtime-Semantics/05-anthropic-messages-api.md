@@ -1,5 +1,7 @@
 # Topic 5 — Anthropic Messages API: Content Blocks, `tool_use`, `tool_result`, Streaming, and Client-Executed Tools
 
+![Anthropic Messages API exact tool protocol visualization](assets/05-anthropic-messages-api_visualization.png)
+
 ## 1. Problem and objective
 
 The Messages API is the model-API surface of the Anthropic stack — Topic 1's cell 1, where the harness is entirely yours. Its architecture is unusually clean to reason about because *everything* goes through one endpoint: "Everything goes through `POST /v1/messages`. Tools and output constraints are features of this single endpoint — not separate APIs" [ANT-API]. The objective is the object model, the tool-use protocol's exact contract, the streaming event grammar, and the client/server tool split — each mapped onto the typed stages, because this surface is where the mapping is tightest.

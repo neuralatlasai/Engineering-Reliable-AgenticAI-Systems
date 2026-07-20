@@ -1,5 +1,7 @@
 # Topic 2 — Separation of Model, Harness, Environment, Tools, Policy, Storage, and User Interface
 
+![Seven agent-system components, typed contracts, bypasses, substitution tests, and fusion pathologies](assets/02-separation-of-model-harness-environment-tools-policy-storage-ui_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 1 defined the harness; this topic draws the full system diagram around it. Seven concerns — model, harness, environment, tools, policy, storage, user interface — appear in every deployed agent, and in badly built ones they appear *fused*: policy embedded in prompts, storage improvised inside conversation history, environment assumptions hard-coded into tools. The objective is the canonical separation with its interfaces, the sourced evidence for why each boundary exists, and the diagnostic signs of each fusion — because every fusion converts a testable component into an untestable entanglement.

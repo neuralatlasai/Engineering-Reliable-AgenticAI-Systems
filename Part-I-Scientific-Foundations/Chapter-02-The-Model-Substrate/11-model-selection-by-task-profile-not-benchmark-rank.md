@@ -1,5 +1,7 @@
 # Topic 11 — Model Selection by Horizon, Tool Accuracy, Latency, Cost, and Risk — Not Aggregate Benchmark Rank
 
+![Task-profile model selection as constrained assignment with paired evaluation and deployment monitoring](assets/11-model-selection-by-task-profile-not-benchmark-rank_visualization.png)
+
 ## 1. Problem and objective
 
 "Which model is best?" is under-specified. A useful selection question is: *which model, under this harness and decoding configuration, for this task distribution, at this cost, latency and risk tolerance?* This topic builds that decision from class-conditional measurements rather than aggregate rank. Agent-as-a-Router supplies direct coding-domain evidence across eight models and roughly ten thousand verified tasks [AAR]; it is a strong case study, not a universal estimate for every domain.

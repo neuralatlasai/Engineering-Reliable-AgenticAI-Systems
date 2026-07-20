@@ -1,5 +1,7 @@
 # Topic 11 — Agentic-System Taxonomy: Conversational, Transactional, Coding, Research, Browser, and Embodied Agents
 
+![Agentic-system taxonomy by observation, verification, reversibility, and concern](assets/11-agentic-system-taxonomy_visualization.png)
+
 ## 1. Problem and objective
 
 The chapter's machinery so far is class-agnostic; deployed agents are not. A coding agent and a browser agent can differ systematically in observation space, action space, verification instruments, reversibility, and consequence. The objective here is a taxonomy of six useful engineering classes, each profiled along the chapter's axes (Topics 3, 5, 6).

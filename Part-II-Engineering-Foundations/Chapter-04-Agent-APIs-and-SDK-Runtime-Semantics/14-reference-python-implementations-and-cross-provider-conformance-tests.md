@@ -1,5 +1,7 @@
 # Topic 14 — Reference Python Implementations and Cross-Provider Conformance Tests
 
+![Cross-provider conformance contracts and reference loop visualization](assets/14-reference-python-implementations-and-cross-provider-conformance-tests_visualization.png)
+
 ## 1. Problem and objective
 
 Every preceding topic in this chapter ended in a claim about *semantics*: the tool-use round trip pairs IDs and batches parallel results in one message [ANT-API]; `pause_turn` must be resumed by echoing the response back or the turn is silently truncated [ANT-API]; a stream must be drained past its terminal message or the loop hangs on unread state [CAL]; provider-managed state is pinned by identifier, not reconstructed [ANT-API; OAG; GIA]; and a model upgrade is a configuration change with an evidentiary burden (Topic 13 §6). Claims about semantics are cheap. The objective of this topic is to convert them into **artifacts that fail loudly when a provider changes its mind**: reference implementations of the disciplines this chapter established, and a conformance suite that tests the *divergences* of Topic 12 rather than assuming them away.

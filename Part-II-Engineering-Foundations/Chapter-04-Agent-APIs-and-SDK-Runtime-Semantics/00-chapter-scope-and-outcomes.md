@@ -1,5 +1,7 @@
 # Chapter 4 — Agent APIs and SDK Runtime Semantics
 
+![Chapter 4 agent APIs and SDK runtime semantics visualization](assets/00-chapter-scope-and-outcomes_visualization.png)
+
 ## Scope, Prerequisites, Terminology, Boundaries, Exclusions, and Expected Outcomes
 
 ---

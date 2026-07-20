@@ -1,5 +1,7 @@
 # Topic 3 — The Canonical Loop: Gather → Infer → Act → Observe → Verify → Update State → Terminate
 
+![Canonical seven-phase harness loop with typed actions, verification, state commitment, and terminal causes](assets/03-canonical-loop_visualization.png)
+
 ## 1. Problem and objective
 
 Every agent runtime, however different its API, executes some version of one loop. This topic fixes the canonical seven-phase form, maps the three documented production loops onto it phase by phase, and — the part that matters for reliability — identifies which phases the shipped loops *skip or leave optional*, because the gap between the canonical loop and the shipped loops is precisely where this book's verification discipline has to be added by the builder.

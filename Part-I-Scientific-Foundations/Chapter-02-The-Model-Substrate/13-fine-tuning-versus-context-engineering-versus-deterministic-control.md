@@ -1,5 +1,7 @@
 # Topic 13 — Fine-Tuning versus Context Engineering versus Deterministic Control
 
+![Failure-mechanism diagnosis across deterministic control, context engineering, fine-tuning, and substitution](assets/13-fine-tuning-versus-context-engineering-versus-deterministic-control_visualization.png)
+
 ## 1. Problem and objective
 
 When agent behavior is inadequate, teams can change what the model has learned, change what it sees, change the system that mediates its actions, or replace the model. These interventions operate on different failure mechanisms. A permission defect cannot be repaired by more examples; missing current information should not be baked into weights; a stable high-volume behavior may be too expensive to restate in every request.

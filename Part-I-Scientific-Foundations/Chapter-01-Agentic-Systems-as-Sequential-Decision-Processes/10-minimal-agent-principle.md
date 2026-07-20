@@ -1,5 +1,7 @@
 # Topic 10 — The Minimal-Agent Principle: Evidence-Constrained Architecture Selection
 
+![Evidence-constrained minimal-agent architecture selection](assets/10-minimal-agent-principle_visualization.png)
+
 ## 1. Problem and objective
 
 “Use the least autonomous architecture” is useful only if “least” and “satisfies the task” are operational. Agency is multidimensional, candidate architectures are often incomparable, and measured performance is uncertain. A single vector argmin or universal rung order therefore gives false precision.

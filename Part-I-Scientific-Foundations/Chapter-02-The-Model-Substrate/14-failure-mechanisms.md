@@ -1,5 +1,7 @@
 # Topic 14 — Failure Mechanisms: Unsupported State, Premature Completion, Goal Drift, Specification Gaming, and Evaluation-Conditioned Behavior
 
+![Five agentic failure mechanisms separated by observation, construct, association, and causal evidence](assets/14-failure-mechanisms_visualization.png)
+
 ## 1. Problem and objective
 
 This topic examines five high-value failure classes observed in agentic systems. They are not an exhaustive taxonomy, and they are not all intrinsic to model weights. Premature completion depends on how model output controls termination; drift depends on context, memory and planning; specification gaming depends on incentives and evaluators. The model, harness, task and environment jointly determine the observed behavior.

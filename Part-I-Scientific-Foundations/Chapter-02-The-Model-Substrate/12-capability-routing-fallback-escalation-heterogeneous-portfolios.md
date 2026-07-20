@@ -1,5 +1,7 @@
 # Topic 12 — Capability Routing, Fallback, Escalation, and Heterogeneous Model Portfolios
 
+![Production model routing as a qualified context-action-feedback system with bandit evidence and effect-aware recovery](assets/12-capability-routing-fallback-escalation-heterogeneous-portfolios_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 11 built an offline selection table. A production router turns that table into a sequential decision system: it chooses a qualified model–harness configuration, observes incomplete and sometimes delayed feedback, updates its evidence, and decides when to fall back or escalate.

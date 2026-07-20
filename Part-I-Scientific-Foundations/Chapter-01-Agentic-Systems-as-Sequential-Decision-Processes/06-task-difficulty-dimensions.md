@@ -1,5 +1,7 @@
 # Topic 6 — Task Horizon, Effective Branching, Observability, Verifiability, Reversibility/Recoverability, and Failure Cost
 
+![Task difficulty dimensions and their control mappings](assets/06-task-difficulty-dimensions_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 5 profiles the deployed system; this topic profiles the task and environment. Reliability depends on their interaction. The task properties here are horizon, action branching, state observability, outcome verifiability, reversibility/recoverability, and failure cost. The objective is to define each property operationally, identify what it can and cannot predict, and derive only the probability expressions justified by stated assumptions.

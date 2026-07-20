@@ -1,5 +1,7 @@
 # Topic 10 — Deterministic Preconditions, Postconditions, Authorization, and Resource Ownership
 
+![Deterministic enforcement chain from validation and preconditions through principal-bound authorization and observed postconditions](assets/10-deterministic-preconditions-postconditions-authorization-resource-ownership_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The enforcement fields: $\alpha_u$ (authorization) plus the pre- and postcondition contracts. This is where Chapter 3's deterministic-invariant floor meets the tool boundary.

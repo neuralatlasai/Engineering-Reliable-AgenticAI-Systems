@@ -1,5 +1,7 @@
 # Topic 8 — Uncertainty Estimation: Calibration, Abstention, Self-Consistency, and Verifier Disagreement
 
+![Calibrated uncertainty, selective prediction, verifier disagreement, and consequence-aware action gating](assets/08-uncertainty-estimation-calibration-abstention-verifier-disagreement_visualization.png)
+
 ## 1. Problem and objective
 
 An agent does not need perfect self-knowledge to behave conservatively. It needs an uncertainty signal that predicts error well enough to choose among **proceed**, **verify**, **escalate**, and **abstain**. Those are different requirements from producing persuasive confidence language.

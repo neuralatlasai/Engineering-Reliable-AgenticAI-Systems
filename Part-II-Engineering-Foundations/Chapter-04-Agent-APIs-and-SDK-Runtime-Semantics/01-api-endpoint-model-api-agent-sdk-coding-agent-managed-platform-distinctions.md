@@ -1,5 +1,7 @@
 # Topic 1 — API Endpoint, Model API, Agent SDK, Coding Agent, and Managed-Agent Platform Distinctions
 
+![Agent surface harness and deployment ownership visualization](assets/01-api-endpoint-model-api-agent-sdk-coding-agent-managed-platform-distinctions_visualization.png)
+
 ## 1. Problem and objective
 
 The word "agent API" names five different products with different ownership boundaries, different failure surfaces, and different bills. Choosing among them without a classification is how teams end up hosting a loop they meant to outsource, or outsourcing a loop they needed to control. The objective is a two-axis classification — taken directly from Anthropic's own developer reference, which draws it explicitly — that sorts any offering, tells you exactly what you still own, and connects each cell to the Chapter 3 control-plane responsibilities you must therefore implement yourself.

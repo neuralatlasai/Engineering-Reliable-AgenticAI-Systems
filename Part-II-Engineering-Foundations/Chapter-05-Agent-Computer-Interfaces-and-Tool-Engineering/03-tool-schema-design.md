@@ -1,5 +1,7 @@
 # Topic 3 — Tool Schema Design: Names, Descriptions, Argument Boundaries, Enums, Defaults, and Validation
 
+![Tool-schema design pipeline from representable arguments through structural and semantic validation to deterministic admission](assets/03-tool-schema-design_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The design of $n_u$, $d_u$, and $\Sigma^{\mathrm{in}}_u$ — the three fields the model actually reads. This is the highest-leverage and least-reviewed surface in an agent system.

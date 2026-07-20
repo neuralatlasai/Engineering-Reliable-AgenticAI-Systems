@@ -1,5 +1,7 @@
 # Topic 10 — Exception Taxonomy: Model, Schema, Tool, Policy, Environment, Transport, and Orchestration Failures
 
+![Seven harness failure classes routed to metabolism, bounded retry, escalation, or typed termination](assets/10-exception-taxonomy_visualization.png)
+
 ## 1. Problem and objective
 
 Agent systems fail through seven distinguishable channels, and the correct response differs per channel: some failures should retry, some should re-prompt, some should escalate, some should halt, and some should be *fed to the model as information* because adaptation is the designed response. Uniform handling — the generic try/catch around the loop — converts this structure into noise. The objective is the seven-class taxonomy with each class's typed signals, retry semantics, correct consumer, and mapping onto the terminal-control statuses; and the design rule the reference runtimes already embody: **most failures are data for the loop; only some are exceptions to it.**

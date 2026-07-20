@@ -17,6 +17,7 @@ export default defineBookConfig({
   include: [
     "README.md",
     "Part-*/**/*.md",
+    "Part-*/**/assets/*.{avif,gif,jpeg,jpg,png,svg,webp}",
     "Knowledge_source/**/*.md",
     "Knowledge_source/**/*.pdf",
   ],

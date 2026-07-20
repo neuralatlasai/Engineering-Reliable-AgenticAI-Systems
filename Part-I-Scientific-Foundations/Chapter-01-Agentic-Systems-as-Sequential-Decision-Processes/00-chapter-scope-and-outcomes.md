@@ -1,5 +1,7 @@
 # Chapter 1 — Agentic Systems as Sequential Decision Processes
 
+![Chapter 1 agentic systems as sequential decision processes visualization](assets/00-chapter-scope-and-outcomes_visualization.png)
+
 ## Scope, Prerequisites, Terminology, Boundaries, Exclusions, and Expected Outcomes
 
 ---

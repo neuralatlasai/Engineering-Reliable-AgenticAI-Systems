@@ -1,5 +1,7 @@
 # Topic 4 — Model Policy versus Harness Policy versus Deterministic Application Policy
 
+![Typed execution pipeline separating model, harness, and deterministic application policies](assets/04-model-policy-harness-policy-application-policy_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 2 represented action selection as a policy distribution. A deployed system is more structured: application routing decides whether a model is consulted; the harness assembles context and admits or rejects proposals; the model samples candidate outputs; the dispatcher executes admitted actions against an environment with its own transition dynamics. These components have different authors, test methods, failure modes, and release velocities. The objective is a typed pipeline that prevents attribution errors without pretending the layers are independent.

@@ -1,5 +1,7 @@
 # Topic 5 — Agency Dimensions: Autonomy, Environmental Reach, Persistence, Adaptivity, and Authority
 
+![Five-dimensional agency deployment profile](assets/05-agency-dimensions_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 1 gave a discrete control-flow classification; real systems require a configuration profile. Two behavioral agents can differ sharply in model discretion, reachable systems, retained state, response to feedback, and delegated permissions. The objective is a five-dimensional engineering rubric tied to observable configuration and behavior.

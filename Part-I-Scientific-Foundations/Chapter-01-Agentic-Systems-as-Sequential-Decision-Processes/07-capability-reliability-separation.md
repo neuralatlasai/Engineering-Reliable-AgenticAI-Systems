@@ -1,5 +1,7 @@
 # Topic 7 — Capability–Reliability Separation: Estimands, Evidence, and Operational Qualification
 
+![Capability and reliability estimands with an operational qualification bridge](assets/07-capability-reliability-separation_visualization.png)
+
 ## 1. Problem and objective
 
 Capability and reliability answer different questions. A capability result estimates performance under a specified evaluation protocol. An operational-reliability result estimates repeated success, critical-failure risk, or loss under a specified deployment distribution. Neither quantity is a property of a bare model, and neither generally determines the other.

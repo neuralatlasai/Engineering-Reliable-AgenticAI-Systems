@@ -1,5 +1,7 @@
 # Topic 11 — Harness-Induced Capability: Why the Same Model Performs Differently Under Different Scaffolds
 
+![Harness-induced capability evidence, nine mechanism channels, interaction effects, efficiency, and scaffolding ceiling](assets/11-harness-induced-capability_visualization.png)
+
 ## 1. Problem and objective
 
 This topic consolidates the chapter's empirical core: the same model, under different harnesses, is measurably a different agent. Chapters 1–2 cited the headline numbers; here the objective is the *mechanisms* — through which harness dimensions the capability differences arise — and the correct statistical reading of the evidence, which is subtler than the headlines and worth getting exactly right, because both over-claiming ("the harness adds 24 points") and under-claiming ("it's all the model") lead to misallocated engineering.

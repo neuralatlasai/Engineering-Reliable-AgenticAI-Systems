@@ -1,5 +1,7 @@
 # Topic 1 — Harness Definition: The System Surrounding the Model That Enables Stateful Action
 
+![Formal harness boundary from context assembly through proposal admission, dispatch, state update, and evidence](assets/01-harness-definition_visualization.png)
+
 ## 1. Problem and objective
 
 "Harness" is this book's most load-bearing term, and the field uses it loosely — sometimes meaning a prompt template, sometimes an entire product. The objective of this topic is a definition with edges: what the harness is, what it is *for*, what is inside and outside it, and why the definition earns the elevated status this book gives it — including the strongest formal treatment available, in which the harness is not a metaphor but a typed, serializable, substitutable mathematical object.

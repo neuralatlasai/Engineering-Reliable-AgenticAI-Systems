@@ -1,5 +1,7 @@
 # Topic 9 — Cancellation, Interruption, Resumption, Replay, and Idempotency
 
+![Effect-state lifecycle for cancellation, ambiguous outcomes, reconciliation, safe resumption, replay, and idempotency](assets/09-cancellation-interruption-resumption-replay-idempotency_visualization.png)
+
 ## 1. Problem and objective
 
 Cancellation and process failure can cut an agent run between proposal, admission, dispatch, effect, observation, and durable commit. At that boundary, neither “retry” nor “resume” is intrinsically safe. The harness must determine which state is durable, which external effects occurred, which effects remain ambiguous, and which operations can be repeated without duplication.

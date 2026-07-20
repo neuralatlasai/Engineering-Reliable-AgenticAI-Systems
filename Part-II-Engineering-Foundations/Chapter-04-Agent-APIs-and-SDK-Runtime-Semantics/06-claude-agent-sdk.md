@@ -1,5 +1,7 @@
 # Topic 6 — Claude Agent SDK: `query()`, `ClaudeSDKClient`, Built-in Tools, Permissions, Hooks, Subagents, Sessions, Skills, and MCP
 
+![Claude Agent SDK runtime control and failure semantics visualization](assets/06-claude-agent-sdk_visualization.png)
+
 ## 1. Problem and objective
 
 The Claude Agent SDK is "Claude Code packaged as a library" [ANT-API] — a harness-only surface (Topic 1, cell 4) that ships an opinionated loop *and* a built-in toolset, and leaves deployment to you. Chapter 3 used it as the reference runtime for loop semantics; this topic documents it as an *interface*: entry points, the permission and hook machinery that constitute its control plane, subagent and session semantics, and the extension surfaces (skills, MCP). The objective is to let a builder configure it deliberately — because on this surface, $\mathcal C$ (Chapter 3's harness configuration) is almost entirely a matter of SDK options, and defaults are decisions.

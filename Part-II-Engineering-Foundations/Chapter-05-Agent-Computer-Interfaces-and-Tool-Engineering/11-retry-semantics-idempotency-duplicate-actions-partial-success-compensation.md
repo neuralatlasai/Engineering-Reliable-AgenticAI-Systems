@@ -1,5 +1,7 @@
 # Topic 11 — Retry Semantics, Idempotency Keys, Duplicate Actions, Partial Success, and Compensation
 
+![Idempotency state machine, ambiguous-failure decision paths, partial-success compensation, and fault-injection loop](assets/11-retry-semantics-idempotency-duplicate-actions-partial-success-compensation_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** $\iota_u$ — the idempotency and retry contract — and the compensator $C_u$ that Topic 5 required $\textsf{W}_{\mathrm{rev}}$ to possess. This is where classical distributed-systems discipline meets a caller that retries *on its own initiative*.

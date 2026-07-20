@@ -1,5 +1,7 @@
 # Topic 6 — Tool Discovery, Deferred Loading, Tool Search, and Namespace Management
 
+![Tool-discovery regimes, deferred-loading cost model, retrieval ceiling, and namespace-management controls](assets/06-tool-discovery-deferred-loading-tool-search-namespace-management_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** How much of $\mathcal U_c$ the model sees at once, and by what mechanism it sees the rest. This is the first topic where the tool surface stops being a design problem and becomes a *resource-allocation* problem.

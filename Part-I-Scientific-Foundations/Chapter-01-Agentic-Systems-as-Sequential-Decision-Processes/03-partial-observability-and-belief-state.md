@@ -1,5 +1,7 @@
 # Topic 3 — Partially Observable Environments and Belief-State Approximation
 
+![Partially observable environments and belief-state approximation architecture](assets/03-partial-observability-and-belief-state_visualization.png)
+
 ## 1. Problem and objective
 
 Topic 2 separated latent state $s_t$, raw observation $x_t$, and policy-visible context $c_t=C_H(x_t,h_t,m_t,\mathcal Q)$. Full observability is a valid special case, but most repository, browser, operating-system, and service environments expose only queried slices of state through interfaces with truncation, latency, permissions, and failure modes. The objective here is to make belief maintenance a first-class engineering concern: define the exact Bayesian object, show what deployed LLM systems approximate instead, identify corruption mechanisms, and specify measurements and recovery controls.

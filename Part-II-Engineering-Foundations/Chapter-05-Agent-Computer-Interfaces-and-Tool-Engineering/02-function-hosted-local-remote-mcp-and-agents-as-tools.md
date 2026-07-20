@@ -1,5 +1,7 @@
 # Topic 2 — Function Tools, Hosted Tools, Local Tools, Remote Tools, MCP Tools, and Agents-as-Tools
 
+![Tool-placement comparison across function, hosted, MCP, and agent-as-tool boundaries with control-retention invariants](assets/02-function-hosted-local-remote-mcp-and-agents-as-tools_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The tool-type taxonomy, organized by the two questions that actually change your engineering: **who executes** ($e_u$) and **who determines the result's trustworthiness** ($\phi_u$). This topic populates $e_u$ and pre-loads Topic 12's trust classification.

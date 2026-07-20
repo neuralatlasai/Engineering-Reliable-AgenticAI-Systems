@@ -1,5 +1,7 @@
 # Topic 5 — Run, Turn, Step, Span, Tool Call, Interruption, Checkpoint, and Terminal Result
 
+![Execution vocabulary hierarchy linking runs, turns, steps, spans, tool calls, interruptions, checkpoints, and terminal results](assets/05-run-turn-step-span-toolcall-interruption-checkpoint-terminal-result_visualization.png)
+
 ## 1. Problem and objective
 
 Execution vocabulary is where agent engineering quietly loses precision: "step" means a model call in one codebase, a tool call in another, and a UI update in a third; "done" conflates a model emission pattern with a validated outcome. Chapter 1's notation contract fixed the mathematical layer; this topic fixes the *operational* layer — the eight units every runtime manipulates — and maps each onto the typed objects and onto the three reference runtimes, so that a trace, a metric, or an incident report written in one system's vocabulary is translatable into the others'.

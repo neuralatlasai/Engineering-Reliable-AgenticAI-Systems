@@ -1,5 +1,7 @@
 # Topic 9 — Model-Native Tool Use versus Harness-Implemented Control Flow
 
+![Six tool-control loci across provider-hosted, application-harness, and remote-service placements](assets/09-model-native-tool-use-versus-harness-implemented-control-flow_visualization.png)
+
 ## 1. Problem and objective
 
 “The model used a tool” hides several independent placement decisions. The model may propose the call, the provider may schedule or execute it, a remote service may hold the state, and the application may still authorize or audit it. Treating all of these as one hosted-versus-local switch produces incorrect security, latency and recovery assumptions.

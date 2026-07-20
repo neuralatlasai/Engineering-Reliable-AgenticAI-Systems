@@ -1,5 +1,7 @@
 # Topic 15 — Why Adding Tools Can Reduce Performance Through Ambiguity and Context Saturation
 
+![Conceptual tool-surface saturation curve, causal mechanisms, addition gate, local experiment, and mitigations](assets/15-why-adding-tools-can-reduce-performance-through-ambiguity-and-context-saturation_visualization.png)
+
 ## 1. Scope, prerequisites, terminology, boundaries, exclusions, outcomes
 
 **Scope.** The chapter's closing result: **tool-surface size is not free, and past a point it is negative.** Adding a capable, correct, well-described tool can lower the measured performance of the whole system. This topic explains the mechanisms, states honestly what is and is not measured, and gives the experiment that finds your system's turning point.

@@ -1,5 +1,7 @@
 # Topic 7 — Claude Managed Agents: Agent, Environment, Session, Event Stream, Managed Sandbox, and Self-Hosted Sandbox
 
+![Claude Managed Agents hosted runtime and residual responsibilities visualization](assets/07-claude-managed-agents_visualization.png)
+
 ## 1. Problem and objective
 
 Managed Agents is the only surface in this chapter that supplies **both** the harness and the deployment [ANT-API] — the provider runs the loop *and* hosts the container where tools execute. That makes it the cleanest available specimen of a fully-outsourced control plane, and therefore the best place to ask the question this book keeps asking: *what did you give up, and what do you still owe?* The objective is the object model, the session lifecycle and event grammar, the credential architecture (which is genuinely novel), the self-hosted variant that reclaims deployment, and the residual responsibilities that remain yours no matter how managed the platform is.

@@ -1,5 +1,7 @@
 # Topic 11 — Provider-Managed versus Application-Managed State
 
+![Provider-managed versus application-managed state ownership visualization](assets/11-provider-managed-versus-application-managed-state_visualization.png)
+
 ## 1. Problem and objective
 
 Every surface in this chapter offers to hold your state, and each offer has different retention, tenancy, deletion, portability, and failure semantics. The choice is usually made by accident — whichever the quickstart used — and then discovered during a compliance review, an incident, or a migration. The objective is to make it a decision: what "state" actually comprises, which provider offers to hold which part, what each offer costs, and the rules for choosing an owner per class of state rather than one owner for all of it.

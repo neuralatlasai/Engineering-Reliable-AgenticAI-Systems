@@ -1,5 +1,7 @@
 # Topic 14 — Experimental Methodology for Harness Ablations
 
+![Harness ablation methodology from predeclared paired design through clustered inference, integrity gates, and promotion](assets/14-experimental-methodology-for-harness-ablations_visualization.png)
+
 ## 1. Problem and objective
 
 Every claim this chapter has made about harness value terminates in the same requirement: the ability to measure what a harness change did. That measurement is an experiment on a stochastic system with clustered structure, contaminable instruments, and an optimizing subject — and most published and internal "harness improvements" fail basic methodological review. The objective is the complete ablation protocol: design (what to vary, what to hold), statistics (inherited from the book's contract and applied to the harness case), integrity (against both sloppy practice and gaming), and the promotion pipeline that turns a measured delta into a shipped change without shipping regressions.

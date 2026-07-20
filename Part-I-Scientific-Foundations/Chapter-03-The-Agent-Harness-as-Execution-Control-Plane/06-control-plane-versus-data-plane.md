@@ -1,5 +1,7 @@
 # Topic 6 — Control-Plane versus Data-Plane Responsibilities
 
+![Agent control-plane and data-plane separation with authority invariants, sensor contracts, and bypass paths](assets/06-control-plane-versus-data-plane_visualization.png)
+
 ## 1. Problem and objective
 
 Network engineering long ago separated the plane that decides (routing tables, admission policy) from the plane that carries (packets), because fusing them lets traffic rewrite the rules that govern traffic. Agent harnesses face the same design problem with higher stakes: the data plane carries *natural language*, and the component reading it is an instruction-follower. This topic draws the control/data separation for agent harnesses precisely, grounds each plane's contents in the sources, and states the two invariants whose violation constitutes most of Chapter 12's threat model — data acting as control, and control depending on unverified data.

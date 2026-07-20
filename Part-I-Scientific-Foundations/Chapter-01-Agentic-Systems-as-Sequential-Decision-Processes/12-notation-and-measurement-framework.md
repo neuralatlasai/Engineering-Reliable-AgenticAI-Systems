@@ -1,5 +1,7 @@
 # Topic 12 — Scientific Notation and Measurement Framework Used Throughout the Book
 
+![Scientific notation and measurement framework for agentic systems](assets/12-notation-and-measurement-framework_visualization.png)
+
 ## 1. Problem and objective
 
 This topic is the book's notation and reporting contract. It distinguishes latent environment dynamics from observable run records, model emissions from executed actions, and task instances from repeated stochastic runs. It also defines the minimum statistical design for comparing agent configurations.

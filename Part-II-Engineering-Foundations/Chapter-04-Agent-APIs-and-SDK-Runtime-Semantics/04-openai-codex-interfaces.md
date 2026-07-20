@@ -1,5 +1,7 @@
 # Topic 4 — OpenAI Codex Interfaces: CLI, SDK, App Server, MCP Server, Cloud Task, GitHub Action, and Code Review
 
+![OpenAI Codex sandbox and approval policy visualization](assets/04-openai-codex-interfaces_visualization.png)
+
 ## 1. Problem and objective
 
 Codex is a *coding agent* (Topic 1, row 3) exposed through many entry points — and the entry point determines the deployment cell, the control surface, and who holds the sandbox. The objective is to document what the accessible sources establish about those semantics, and — the more useful contribution — to state precisely what they do not, because this is the surface where this book's evidence is thinnest and where confabulation would be easiest.

@@ -1,5 +1,7 @@
 # Topic 7 — Deterministic Invariants Around Probabilistic Model Behavior
 
+![Deterministic reliability floor around stochastic proposals with invariant classes, monitors, and consequence gates](assets/07-deterministic-invariants-around-probabilistic-behavior_visualization.png)
+
 ## 1. Problem and objective
 
 Chapter 2 established that the model is a sampled policy whose outputs carry no guarantees; Chapter 1 established that some system properties must be guarantees. The only resolution is architectural: **properties that must always hold are enforced by deterministic machinery positioned where stochastic proposals cannot bypass it.** This topic classifies the invariants worth enforcing, locates the enforcement points in the typed-stage pipeline, presents the strongest evidence in the ledger — a system whose stochastic component demonstrably attacked its own verification when the deterministic gate was the only defense — and states the design discipline that follows.
