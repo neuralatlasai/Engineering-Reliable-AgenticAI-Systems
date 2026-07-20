@@ -4,6 +4,7 @@ import { BookHeader } from "@/components/reader/book-header";
 import { BookNavigation } from "@/components/reader/book-navigation";
 import { DocumentOutline } from "@/components/reader/document-outline";
 import { DocumentRenderer } from "@/components/reader/document-renderer";
+import { HomeHero } from "@/components/reader/home-hero";
 import { RouteFocus } from "@/components/reader/route-focus";
 import type { LoadedBookDocument, RuntimeBookData } from "@/runtime/types";
 
@@ -38,7 +39,12 @@ export function ReaderPage({ book, loaded }: ReaderPageProperties) {
           >
             <div className="document-eyebrow">Source-preserving edition</div>
             <p className="document-path">{summary.relativePath}</p>
-            <DocumentRenderer document={document} />
+            <DocumentRenderer
+              document={document}
+              {...(summary.canonicalRoute === "/"
+                ? { afterLead: <HomeHero /> }
+                : {})}
+            />
             <nav
               aria-label="Document pagination"
               className="document-pagination"

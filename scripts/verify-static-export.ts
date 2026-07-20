@@ -7,6 +7,20 @@ import { normalizeBookBasePath } from "../src/shared/base-path";
 
 const outputRoot = path.resolve(process.cwd(), "out");
 const basePath = normalizeBookBasePath(process.env["BOOK_BASE_PATH"]);
+const heroAssetStem = "engineering-reliable-agentic-ai-systems-hero";
+const heroAssetWidths = [640, 1024, 1536] as const;
+const heroAssetFormats = [
+  { extension: "avif", maximumBytes: 200 * 1024 },
+  { extension: "webp", maximumBytes: 300 * 1024 },
+] as const;
+const heroFamilyMaximumBytes = 1024 * 1024;
+
+const heroAssets = heroAssetWidths.flatMap((width) =>
+  heroAssetFormats.map(({ extension, maximumBytes }) => ({
+    fileName: `${heroAssetStem}-${width}.${extension}`,
+    maximumBytes,
+  })),
+);
 
 function confinedOutputPath(...segments: readonly string[]): string {
   const candidate = path.resolve(outputRoot, ...segments);
@@ -24,10 +38,34 @@ function confinedOutputPath(...segments: readonly string[]): string {
 async function requireFile(
   absolutePath: string,
   description: string,
-): Promise<void> {
+): Promise<number> {
   const metadata = await stat(absolutePath);
   if (!metadata.isFile()) {
     throw new Error(`${description} is not a regular file: ${absolutePath}`);
+  }
+  return metadata.size;
+}
+
+async function verifyHeroAssets(): Promise<void> {
+  const sizes = await Promise.all(
+    heroAssets.map(async ({ fileName, maximumBytes }) => {
+      const size = await requireFile(
+        confinedOutputPath("images", "home", fileName),
+        `Responsive home hero asset '${fileName}'`,
+      );
+      if (size > maximumBytes) {
+        throw new Error(
+          `Responsive home hero asset '${fileName}' is ${size} bytes; its budget is ${maximumBytes} bytes.`,
+        );
+      }
+      return size;
+    }),
+  );
+  const familyBytes = sizes.reduce((total, size) => total + size, 0);
+  if (familyBytes > heroFamilyMaximumBytes) {
+    throw new Error(
+      `Responsive home hero family is ${familyBytes} bytes; its aggregate budget is ${heroFamilyMaximumBytes} bytes.`,
+    );
   }
 }
 
@@ -68,6 +106,7 @@ async function main(): Promise<void> {
     requireFile(rootHtmlPath, "Root static page"),
     requireFile(searchManifestPath, "Search manifest"),
     requireFile(routeManifestPath, "Compiled route manifest"),
+    verifyHeroAssets(),
   ]);
 
   const [rootHtml, routeManifestSource] = await Promise.all([
@@ -85,6 +124,14 @@ async function main(): Promise<void> {
     throw new Error(
       `Root page does not reference the expected route prefix '${internalRoutePrefix}'.`,
     );
+  }
+  for (const { fileName } of heroAssets) {
+    const expectedHeroReference = `${basePath}/images/home/${fileName}`;
+    if (!rootHtml.includes(expectedHeroReference)) {
+      throw new Error(
+        `Root page does not reference the expected base-prefixed hero asset '${expectedHeroReference}'.`,
+      );
+    }
   }
 
   const routeManifest = JSON.parse(

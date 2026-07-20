@@ -19,12 +19,16 @@ interface RenderContext {
   readonly document: CompiledDocument;
   readonly linksByNodeId: ReadonlyMap<string, LinkRecord>;
   readonly assetsByNodeId: ReadonlyMap<string, AssetReference>;
+  readonly afterLead?: ReactNode;
+  readonly inlineMedia: boolean;
+  readonly priorityImageNodeId?: string;
   readonly tableHeader: boolean;
   readonly tableCellIndex?: number;
   readonly tableAlign?: readonly ("left" | "right" | "center" | null)[];
 }
 
 interface DocumentRendererProperties {
+  readonly afterLead?: ReactNode;
   readonly document: CompiledDocument;
 }
 
@@ -88,14 +92,60 @@ function renderChildren(
   ));
 }
 
+function renderRootChildren(
+  children: readonly DocumentNode[],
+  context: RenderContext,
+  keyPrefix: string,
+): ReactNode {
+  const primaryHeadingIndex = children.findIndex(
+    (child) => child.type === "heading" && child.depth === 1,
+  );
+  const immediateLead = children[primaryHeadingIndex + 1];
+  const leadIndex =
+    immediateLead?.type === "heading" && immediateLead.depth > 1
+      ? primaryHeadingIndex + 1
+      : children.findIndex(
+          (child, index) =>
+            index > primaryHeadingIndex && child.type === "paragraph",
+        );
+  const insertionIndex = leadIndex >= 0 ? leadIndex : primaryHeadingIndex;
+
+  return children.map((child, index) => (
+    <Fragment key={`${keyPrefix}:${child.nodeId}:${index}`}>
+      {renderNode(child, context)}
+      {index === insertionIndex ? context.afterLead : undefined}
+    </Fragment>
+  ));
+}
+
+function isImageNode(
+  node: DocumentNode,
+): node is Extract<DocumentNode, { type: "image" | "imageReference" }> {
+  return node.type === "image" || node.type === "imageReference";
+}
+
 function renderNode(node: DocumentNode, context: RenderContext): ReactNode {
   switch (node.type) {
     case "root":
-      return renderChildren(node.children, context, node.nodeId);
+      return renderRootChildren(node.children, context, node.nodeId);
     case "text":
       return node.value;
-    case "paragraph":
-      return <p>{renderChildren(node.children, context, node.nodeId)}</p>;
+    case "paragraph": {
+      const onlyChild =
+        node.children.length === 1 ? node.children[0] : undefined;
+      if (onlyChild !== undefined && isImageNode(onlyChild)) {
+        return renderNode(onlyChild, { ...context, inlineMedia: false });
+      }
+      return (
+        <p>
+          {renderChildren(
+            node.children,
+            { ...context, inlineMedia: true },
+            node.nodeId,
+          )}
+        </p>
+      );
+    }
     case "blockquote":
       return (
         <blockquote>
@@ -209,15 +259,29 @@ function renderNode(node: DocumentNode, context: RenderContext): ReactNode {
           </span>
         );
       }
+      const priority = node.nodeId === context.priorityImageNodeId;
+      const image = (
+        // The original asset remains available; generated variants never replace this source.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          alt={node.alt ?? ""}
+          className={
+            context.inlineMedia
+              ? "content-image-inline"
+              : "content-figure-image"
+          }
+          decoding="async"
+          {...(priority ? { fetchPriority: "high" as const } : {})}
+          loading={priority ? "eager" : "lazy"}
+          src={withBookBasePath(source)}
+          {...(node.title === undefined ? {} : { title: node.title })}
+        />
+      );
+      if (context.inlineMedia) return image;
+
       return (
-        <figure>
-          {/* The original asset remains available; generated variants never replace this source. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt={node.alt ?? ""}
-            loading="lazy"
-            src={withBookBasePath(source)}
-          />
+        <figure className="content-figure">
+          {image}
           {node.title === undefined ? (
             <></>
           ) : (
@@ -365,20 +429,29 @@ function renderNode(node: DocumentNode, context: RenderContext): ReactNode {
   }
 }
 
-export function DocumentRenderer({ document }: DocumentRendererProperties) {
+export function DocumentRenderer({
+  afterLead,
+  document,
+}: DocumentRendererProperties) {
   const linksByNodeId = new Map(
     document.links.map((link) => [link.sourceNodeId, link]),
   );
   const assetsByNodeId = new Map(
     document.assets.map((asset) => [asset.sourceNodeId, asset]),
   );
+  const priorityImageNodeId = document.assets.find(
+    (asset) => asset.status === "valid",
+  )?.sourceNodeId;
 
   return (
     <div className="prose" dir="auto">
       {renderNode(document.root, {
+        ...(afterLead === undefined ? {} : { afterLead }),
         document,
         linksByNodeId,
         assetsByNodeId,
+        inlineMedia: false,
+        ...(priorityImageNodeId === undefined ? {} : { priorityImageNodeId }),
         tableHeader: true,
       })}
     </div>

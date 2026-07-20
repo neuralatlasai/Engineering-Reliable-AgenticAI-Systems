@@ -8,12 +8,15 @@ export default defineConfig([
   globalIgnores([
     ".next/**",
     ".next-dev/**",
+    ".book-build-staging/**",
     ".book-cache/**",
     "build/**",
+    "build.staging/**",
     "coverage/**",
     "out/**",
     "playwright-report/**",
     "public/_book/**",
+    "public/_book.staging/**",
     "test-results/**",
   ]),
 ]);

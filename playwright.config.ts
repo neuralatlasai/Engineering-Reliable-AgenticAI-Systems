@@ -4,6 +4,7 @@ import { normalizeBookBasePath } from "./src/shared/base-path";
 
 const useExternalServer = process.env["PLAYWRIGHT_EXTERNAL_SERVER"] === "1";
 const baseURL = process.env["PLAYWRIGHT_BASE_URL"] ?? "http://127.0.0.1:3000";
+const browserChannel = process.env["PLAYWRIGHT_BROWSER_CHANNEL"]?.trim();
 const bookBasePath = normalizeBookBasePath(process.env["BOOK_BASE_PATH"]);
 const serverURL = new URL(`${bookBasePath}/`, baseURL).toString();
 const serverCommand = process.env["CI"]
@@ -18,6 +19,9 @@ export default defineConfig({
   reporter: [["html", { open: "never" }], ["list"]],
   use: {
     baseURL,
+    ...(browserChannel === undefined || browserChannel === ""
+      ? {}
+      : { channel: browserChannel }),
     trace: "on-first-retry",
   },
   projects: [
